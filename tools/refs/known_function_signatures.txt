@@ -1,0 +1,10 @@
+// Joomla Project DocBlock comments that are relevant
+JFilterInput::getInstance;  JFilterInput;   array;          array;  int;    int;    int
+JFilterInput->clean;        mixed;            JFilterInput;   mixed;    string
+// OpenCATS project DocBlock comments that are relevant
+DataGrid->getMiscArgument;  int;            DataGrid
+// CubeCart project DocBlock comments that are relevant
+Cart::getInstance;  Cart
+// WP Hotel Bookings project DocBlock comments
+WPHB_Sessions::instance;    WPHB_Sessions;  string
+WPHB_Sessions->load;        array,mixed
