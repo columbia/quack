@@ -1,0 +1,7 @@
+chardet~=5.1.0
+colorama~=0.4.6
+
+# Requirements specifically for running pytests
+pytest
+pytest-datafiles
+pytest-dictsdiff
