@@ -1,0 +1,11 @@
+{
+    "name": "deser/autoload_test",
+    "autoload": {
+        "psr-4": {
+            "MyNamespace\\": "src/NamespaceInHere"
+        }
+    },
+    "require": {
+        "monolog/monolog": "^2.9"
+    }
+}
