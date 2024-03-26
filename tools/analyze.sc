@@ -330,9 +330,15 @@ def followAssignedVar(conds: ListBuffer[Map[String, String]], assigned_var: AstN
       // Assigned to a list of variables, analyze all
       // https://www.php.net/manual/en/function.list.php
       for (arg <- call.argument) {
+        val array_index = arg.argumentIndex - 1
+
+        conds += createCondition("ArrayRef",
+            mutable.Map("arrayIdx" -> array_index.toString))
+
+        // TODO: should we really follow each element?
         followAssignedVar(conds, arg, analyzed, depth, warnings)
-        return false
       }
+      return false
     } else if (call.methodFullName == "<operator>.doubleArrow") {
       // Get $value from $key => $value
       return followAssignedVar(conds, call.argument.argumentIndex(2).l(0), analyzed, depth, warnings)
@@ -455,10 +461,21 @@ def getArgIdx(call: CallNode, n: AstNode) : Int = {
 }
 
 // Get the variable representing the value in an iterator
-def extractIteratorVariable(val_assignment: AstNode) : AstNode = {
-  if (!val_assignment.isInstanceOf[CallNode]) {
+def extractIteratorVariable(iterator_parent: AstNode) : AstNode = {
+  if (!iterator_parent.isInstanceOf[CallNode]) {
     throw new Exception("Iterator parent is not call node!")
   }
+
+  // The parent of the Iterator.current call should either be the iterator value
+  // assignment or the addressOf call if the for-each value is passed by reference
+  val val_assignment = iterator_parent.asInstanceOf[CallNode].methodFullName match
+  {
+    case "<operator>.assignment" => iterator_parent /* $val = $iter->current() */
+    case "<operator>.addressOf" => iterator_parent.astParent /* $val = &$iter->current() */
+    case _ => throw new Exception("Unexpected iterator parent method: "
+      + iterator_parent.asInstanceOf[CallNode].methodFullName)
+  }
+
   var loop_value = val_assignment.asInstanceOf[CallNode].argument.argumentIndex(1).l(0)
   // Is ($key => $value), just get $value
   if (loop_value.isInstanceOf[CallNode] &&
@@ -555,33 +572,46 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
           val field_access = parent.asInstanceOf[CallNode]
           // +1 cause weird joern indexing
           val arg_idx = getArgIdx(field_access, n_cast) + 1
-          if (arg_idx != 1) {
-            throw new Exception("Field access but accessed object isn't the one being analyzed! (" + field_access.code + ")")
-          }
-          val field_identifier = field_access.argument.argumentIndex(2).l(0)
-          if (field_identifier.isFieldIdentifier) {
-            // FIXME maybe filter based on field type if we have it
-            // Get the classes that have a field with this name
-            val field_name = field_identifier.asInstanceOf[FieldIdentifier].canonicalName
-            val field_members = cpg.member.name(field_name)
-            val classes_with_field = field_members.typeDecl.name.mkString("|")
-
-            conds += createCondition("Duck",
-              mutable.Map("reason" -> "HasField",
-                "type" -> classes_with_field, "field" -> field_name))
-
-            conds += createCondition("FieldAccess",
-              mutable.Map(
-                "fieldName" -> field_name)
-              )
-
-          } else if (field_identifier.isIdentifier) {
-            conds += createCondition("FieldAccess",
-              mutable.Map(
-                "varFieldName" -> field_identifier.asInstanceOf[Identifier].name)
-              )
+          // The object is used as the field name
+          if (arg_idx == 2) {
+            // FIXME does this mean it should be string? Probably yes, but make sure
+            conds += createCondition("FieldName")
           } else {
-            throw new Exception("Unknown type for field identifier: " + field_identifier.code)
+            if (arg_idx != 1) {
+              throw new Exception("Field access but argument isn't the one being accessed or the field name! (" + field_access.code + ")")
+            }
+            val field_identifier = field_access.argument.argumentIndex(2).l(0)
+            if (field_identifier.isFieldIdentifier) {
+              // FIXME maybe filter based on field type if we have it
+              // Get the classes that have a field with this name
+              val field_name = field_identifier.asInstanceOf[FieldIdentifier].canonicalName
+              val field_members = cpg.member.name(field_name)
+              val classes_with_field = field_members.typeDecl.name.mkString("|")
+
+              conds += createCondition("Duck",
+                mutable.Map("reason" -> "HasField",
+                  "type" -> classes_with_field, "field" -> field_name))
+
+              conds += createCondition("FieldAccess",
+                mutable.Map(
+                  "fieldName" -> field_name)
+                )
+            } else if (field_identifier.isIdentifier) {
+              conds += createCondition("FieldAccess",
+                mutable.Map(
+                  "varFieldName" -> field_identifier.asInstanceOf[Identifier].name)
+                )
+            } else if (field_identifier.isExpression) {
+              // Dynamic field access, so we can't say anything about the type
+              conds += createCondition("Exact",
+                mutable.Map("reason" -> "DynamicCall",
+                  "type" -> "ANY", "call" -> call.name)
+                )
+              return false // No need to collect anything else about this
+            }
+            else {
+              throw new Exception("Unknown type for field identifier: " + field_identifier.code)
+            }
           }
         }
         // Value is being cast to a type
@@ -634,7 +664,9 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
         // Arithmetic operation
         case arithmetic @ ("<operator>.plus" | "<operator>.minus" |
           "<operator>.multiplication" | "<operator>.modulo" |
-          "<operator>.division" | "<operator>.postIncrement") => {
+          "<operator>.division" | "<operator>.postIncrement" |
+          "<operator>.preDecrement" | "<operator>.preIncrement" |
+          "<operator>.postDecrement" | "<operator>.exponentiation") => {
 
           conds += createCondition("ArithmeticOp",
             mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
@@ -643,16 +675,48 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
             mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
 
         }
-        case "<operator>.assignmentPlus" => {
+        // Bitwise operation
+        case bitwise @ ("<operator>.and" | "<operator>.or" |
+          "<operator>.xor" | "<operator>.not" |
+          "<operator>.shiftLeft" | "<operator>.arithmeticShiftRight") => {
 
           conds += createCondition("ArithmeticOp",
-            mutable.Map("type" -> "<operator>.assignmentPlus"))
+            mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
+
+          conds += createCondition("Exact",
+            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+        }
+        // Arithmetic assignment (e.g. +=, -=)
+        case arithmetic_assignment @ ("<operator>.assignmentPlus" |
+          "<operator>.assignmentMinus" | "<operator>.assignmentMultiplication" |
+          "<operator>.assignmentDivision" | "<operators>.assignmentModulo" |
+          "<operators>.assignmentExponentiation") => {
+
+          conds += createCondition("ArithmeticOp",
+            mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
 
           conds += createCondition("Exact",
             mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
 
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
-          // Being added to another variable
+          // Being assigned with another variable
+          if (assigned_var.id != n.id) {
+            followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
+          }
+        }
+        // Bitwise assignment (e.g. &=, |=)
+        case bitwise_assignment @ ("<operators>.assignmentAnd" |
+          "<operators>.assignmentOr" | "<operators>.assignmentXor" |
+          "<operators>.assignmentShiftLeft" | "<operators>.assignmentArithmeticShiftRight") => {
+
+          conds += createCondition("ArithmeticOp",
+            mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
+
+          conds += createCondition("Exact",
+            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+
+          var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
+          // Being assigned with another variable
           if (assigned_var.id != n.id) {
             followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
           }
@@ -679,19 +743,31 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
         case conditional @ ("<operator>.conditional" | "<operator>.elvis") => {
           val call = parent.asInstanceOf[CallNode]
           val arg_idx = getArgIdx(call, n_cast)
-          val other_idx = if (arg_idx == 1) 3 else 2
-          val other_arg = call.argument.argumentIndex(other_idx).l(0)
-          val other_arg_type = getNodeType(other_arg)
-          if (other_arg_type != "ANY") {
 
-            conds += createCondition("Exact",
-              mutable.Map("reason" -> "Ternary", "type" -> other_arg_type))
+          // If analyzing the first argument in ternary (e.g. $a in $a ? $b : $c), we can't deduce anything
+          if (!(call.methodFullName == "<operator>.conditional" && arg_idx == 0)) {
+            // Calculate index of the other conditional argument, where getArgIdx returns
+            // a 0-based index but call.argument.argumentIndex takes 1-based index.
+            val other_idx = if (call.methodFullName == "<operator>.elvis") {
+              // elvis 'collapses' first and second argument: $a ?: $c is the same as $a ? $a : $c
+              if (arg_idx == 0) 2 else 1
+            } else {
+              if (arg_idx == 1) 3 else 2
+            }
 
-              if (other_arg_type == "string") {
-                addHaveToString(conds)
-              }
+            val other_arg = call.argument.argumentIndex(other_idx).l(0)
+            val other_arg_type = getNodeType(other_arg)
+            if (other_arg_type != "ANY") {
 
+              conds += createCondition("Exact",
+                mutable.Map("reason" -> "Ternary", "type" -> other_arg_type))
+
+                if (other_arg_type == "string") {
+                  addHaveToString(conds)
+                }
+            }
           }
+
           conds += createCondition("Conditional",
             mutable.Map("argIdx" -> arg_idx.toString))
         }
@@ -798,7 +874,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
         }
         // The node is used as an argument to a call, record the condition
         case _ => {
-          if (call.methodFullName.startsWith("<operator>")) {
+          if (call.methodFullName.startsWith("<operator>") || call.methodFullName.startsWith("<operators>")) {
             throw new Exception("Unknown operator: " + call.methodFullName + " (" + call.code + ")")
           }
           // The call the node is being passed to
