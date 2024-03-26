@@ -1,0 +1,35 @@
+name: Run Project Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: 'Test Projects'
+        default: '["piwik", "joomla", "cubecart", "openwebanalytics", "contao", "forkcms", "hotel-bookings", "opencats", "aioseo", "booking-calendar", "lead-generated"]'
+
+env:
+  TESTING_PATH: /root/testing
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test: ${{fromJson(github.event.inputs.tests)}}
+    env:
+      TEST_NAME: ${{ matrix.test }}
+      STAGE_NAME: ${{ matrix.test }}-test
+      IMAGE_TAG: quack:${{ matrix.test }}-test
+      ABS_PROJECT_PATH: /root/${{ matrix.test }}
+      DOCKER_BUILDKIT: 1
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build Quack Docker image
+      run: docker build . --target ${{ env.STAGE_NAME }} --file Dockerfile --tag ${{ env.IMAGE_TAG }}
+
+    - name: Make testing directory
+      run: docker run ${{ env.IMAGE_TAG}} mkdir -p ${{ env.TESTING_PATH }}
+
+    - name: Run ${{ env.TEST_NAME }} test
+      run: docker run ${{ env.IMAGE_TAG }} python3 runner.py --output-path ${{ env.TESTING_PATH }} ${{ env.ABS_PROJECT_PATH }}
