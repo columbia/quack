@@ -6,6 +6,7 @@ from .utils import do_analysis, compare_results
 
 CONDITIONS_FIELD_GET_NAME = "conditions_field_get.php"
 
+
 @pytest.mark.datafiles(SAMPLES_DIR / CONDITIONS_FIELD_GET_NAME)
 @pytest.mark.skip()
 def test_conditions_field_get(datafiles, tmp_path):
@@ -39,6 +40,7 @@ def test_conditions_field_set(datafiles, tmp_path):
 
 CONDITIONS_TEST_NAME = "conditions_test.php"
 
+
 @pytest.mark.datafiles(SAMPLES_DIR / CONDITIONS_TEST_NAME)
 def test_conditions_test(datafiles, tmp_path):
     fragment_path = datafiles / CONDITIONS_TEST_NAME
@@ -50,7 +52,9 @@ def test_conditions_test(datafiles, tmp_path):
 
     assert compare_results(expected_result, results)
 
+
 CONDITIONS_TWO_CALLS_TEST_NAME = "conditions_two_calls_test.php"
+
 
 @pytest.mark.datafiles(SAMPLES_DIR / CONDITIONS_TWO_CALLS_TEST_NAME)
 @pytest.mark.skip()
@@ -62,4 +66,33 @@ def test_conditions_two_calls_test(datafiles, tmp_path):
     expected_result = [{'filename': 'conditions_two_calls_test.php',
                         'lineNumber': 6, 'allowedTypes': ['', ''], 'allowedClasses': []}]
 
+    assert compare_results(expected_result, results)
+
+
+CONDITIONALS_TEST_NAME = "conditionals_test.php"
+
+# Note: this test currently fails because line 14 outputs 'deserialize.<returnValue>' (see GitHub issue #28)
+
+
+@pytest.mark.datafiles(SAMPLES_DIR / CONDITIONALS_TEST_NAME)
+def test_conditionals(datafiles, tmp_path):
+    fragment_path = datafiles / CONDITIONALS_TEST_NAME
+
+    results = do_analysis(fragment_path, tmp_path)
+
+    expected_result = [{'filename': 'conditionals_test.php', 'lineNumber': 6,
+                        'allowedTypes': ['string', ''], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 10,
+                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 14,
+                           'allowedTypes': [], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 21,
+                           'allowedTypes': [], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 25,
+                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 29,
+                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                       {'filename': 'conditionals_test.php', 'lineNumber': 33,
+                           'allowedTypes': [], 'allowedClasses': []}
+                       ]
     assert compare_results(expected_result, results)
