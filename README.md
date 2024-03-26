@@ -32,12 +32,12 @@ to the `unserialize` function call.
 ## Requirements and Setup
 
 Quack depends on:
-* [Joern code analysis platform](https://joern.io/) version 2.0.156
+* [Joern code analysis platform](https://joern.io/) version 2.0.290
 * Java Development Kit 19 (Joern dependency)
 * Python3
 
-Quack depends on features we introduced to Joern version 2.0.156. Older versions
-of Joern will not work, while newer versions of Joern likely will work,
+Quack depends on features in Joern version 2.0.290. Older versions
+of Joern will not work. Versions newer than 2.0.290 will likely work,
 although have not been explicitly tested.
 
 
@@ -54,7 +54,7 @@ $ sudo apt-get update && sudo apt-get install -y openjdk-19-jdk openjdk-19-jre
 ```
 $ curl -L "https://github.com/joernio/joern/releases/latest/download/joern-install.sh" -o joern-install.sh
 $ chmod u+x joern-install.sh
-$ ./joern-install.sh --version=v2.0.156
+$ ./joern-install.sh --version=v2.0.290
 ```
 
 3. Install Python packages (optionally, in a virtual environment).
