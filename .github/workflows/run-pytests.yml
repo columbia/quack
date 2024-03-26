@@ -1,0 +1,24 @@
+name: Run Pytests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKER_BUILDKIT: 1
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build Quack Docker image
+      run: docker build . --target quack --file Dockerfile --tag quack:testing-latest
+
+
+    - name: Run pytests on Docker image
+      run: docker run quack:testing-latest pytest -x
