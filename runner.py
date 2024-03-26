@@ -2,7 +2,7 @@ import argparse
 import dataclasses
 import json
 import logging
-import sys
+import sys, os
 from pathlib import Path
 from subprocess import run, CompletedProcess
 from time import time
@@ -77,7 +77,7 @@ class PHPAnalyzer:
             # Make sure the provided project exists
             if not self.project_path.exists():
                 my_logger.error(f"Project path({self.project_path}) does not exist")
-                return
+                exit(os.EX_NOINPUT)
 
             make_sure_dir_exists(self.results_path)
             reported_times = {}
@@ -103,7 +103,7 @@ class PHPAnalyzer:
                     if not no_exit:
                         import pdb
                         pdb.set_trace()
-                        exit()
+                        exit(joe_parse_cmd_ret.returncode)
                 else:
                     my_logger.info(f"{log_prefix} finished successfully")
 
@@ -168,7 +168,7 @@ def main():
     # User requested to analyze a specific project
     if not args.project_path.exists():
         my_logger.error(f"Project path {args.project_path} doesnt exist")
-        exit()
+        exit(os.EX_NOINPUT)
     project_path = args.project_path
     output_path = args.project_path if args.output_path is None else args.output_path
 
