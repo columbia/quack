@@ -14,6 +14,7 @@ use PhpParser\ParserFactory;
 use PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
 use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use PHPStan\PhpDocParser\Ast\Type\UnionTypeNode;
 use PHPStan\PhpDocParser\Lexer\Lexer;
 use PHPStan\PhpDocParser\Parser\ConstExprParser;
 use PHPStan\PhpDocParser\Parser\PhpDocParser;
@@ -27,25 +28,67 @@ class FunctionType {
 
     public string $name;
 
-    /** @var array<ParameterTag> $params */
+    /** @var array<array<string>> $params */
     public array $params;
 
-    /** @var array<ReturnTag> $returns */
+    /** @var array<string> $returns */
     public array $returns;
 
+    /**
+     * @parameter string $name: function name
+     * @parameter array<ParameterTag> $paramTags: list of parameter tags from
+     *            PhpDocParser, with one entry per function parameter.
+     * @parameter array<ReturnTag> $returnTags: return tags from PhpDocParser,
+     *            but should only have one entry.
+     */
     public function __construct(string $name, array $paramTags, array $returnTags) {
         $this->name = $name;
-        $this->params = $paramTags;
-        $this->returns = $returnTags;
+
+        /* Parse the list of returnTags to turn it into a list of string names
+         * of return types. We expect this list to always have one element in
+         * it. When the function has multiple return types
+         * (e.g., @return ClassA | ClassB ), the list contains one element of
+         * UnionTypeNode, which wraps nodes of type ClassA and ClassB. */
+        $this->returns = array();
+        foreach ($returnTags as $returnTag) {
+            if ($returnTag->type instanceof UnionTypeNode) {
+                /* Unwrap the UnionTypeNode to get the actual return types. */
+                $this->returns = array_map(function($tag) { return $tag->name; }, $returnTag->type->types);
+            } else {
+                /* Otherwise, we can just fetch the type name from the tag by
+                 * casting it to a string. */
+                $this->returns = array_map(function($tag) { return "{$tag}"; }, $returnTags);
+            }
+        }
+
+        /* Treat the params list similarly as the returns list, but now there
+         * can be multiple elements in the params list (one for each parameter
+         * of a function), and each parameter can have multiple types, which
+         * are also represented as UnionTypeNodes. The params therefore needs
+         * to be a list of lists, where each sub-list corresponds to one
+         * function parameter. */
+        $this->params = array();
+        foreach ($paramTags as $paramTag) {
+            if ($paramTag->type instanceof UnionTypeNode) {
+                array_push(
+                    $this->params,
+                    array_map(
+                        function($tag) { return $tag->name; },
+                        $paramTag->type->types));
+            } else {
+                array_push($this->params, array("{$paramTag->type}"));
+            }
+        }
     }
 
+
     public function __toString() {
-        $returns_string = implode(',', array_map(function($return) {
-            return "{$return->type}";
-        }, $this->returns));
-        $params_string = implode('; ', array_map(function($param) {
-            return "{$param->type}";
-        }, $this->params));
+        $returns_string = implode(',', $this->returns);
+        $params_string = "";
+        foreach($this->params as $param_entry) {
+            $params_string .= implode(',', $param_entry);
+            $params_string .= "; ";
+        }
         return $this->name . "; " . $returns_string . "; " . $params_string;
     }
 
