@@ -2,6 +2,22 @@ import pytest
 from .conftest import SAMPLES_DIR
 from .utils import do_analysis, compare_results
 
+LIST_TEST_NAME = "array_slicing.php"
+# Note: this test currently fails, see Github Issue #23
+
+
+@pytest.mark.datafiles(SAMPLES_DIR / LIST_TEST_NAME)
+def test_array_slicing(datafiles, tmp_path):
+    fragment_path = datafiles / LIST_TEST_NAME
+
+    results = do_analysis(fragment_path, tmp_path)
+
+    expected_result = [{'filename': 'array_slicing.php',
+                        'lineNumber': 3, 'allowedTypes': ['array'], 'allowedClasses': []}]
+
+    assert compare_results(expected_result, results)
+
+
 AST_PARENTS_TEST_NAME = "AST_parents_test.php"
 
 
