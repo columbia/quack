@@ -3,3 +3,5 @@
 *.out
 *.pdf
 __pycache__
+PHP/processed
+Data
