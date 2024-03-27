@@ -33,3 +33,8 @@ jobs:
 
     - name: Run ${{ env.TEST_NAME }} test
       run: docker run ${{ env.IMAGE_TAG }} python3 runner.py --output-path ${{ env.TESTING_PATH }} ${{ env.ABS_PROJECT_PATH }}
+    
+    - name: Print debug log
+      run: cat debug.log
+
+      
