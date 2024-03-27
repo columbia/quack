@@ -32,5 +32,5 @@ jobs:
       run: docker run ${{ env.IMAGE_TAG}} mkdir -p ${{ env.TESTING_PATH }}
 
     - name: Run ${{ env.TEST_NAME }} test
-      run: docker run /bin/bash -c "${{ env.IMAGE_TAG }} python3 runner.py --output-path ${{ env.TESTING_PATH }} ${{ env.ABS_PROJECT_PATH }} && cat debug.log"
+      run: docker run ${{ env.IMAGE_TAG }} /bin/bash -c "python3 runner.py --output-path ${{ env.TESTING_PATH }} ${{ env.ABS_PROJECT_PATH }} && cat debug.log"
       
