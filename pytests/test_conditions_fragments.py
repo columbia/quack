@@ -71,9 +71,6 @@ def test_conditions_two_calls_test(datafiles, tmp_path):
 
 CONDITIONALS_TEST_NAME = "conditionals_test.php"
 
-# Note: this test currently fails because line 14 outputs 'deserialize.<returnValue>' (see GitHub issue #28)
-
-
 @pytest.mark.datafiles(SAMPLES_DIR / CONDITIONALS_TEST_NAME)
 def test_conditionals(datafiles, tmp_path):
     fragment_path = datafiles / CONDITIONALS_TEST_NAME
@@ -86,13 +83,13 @@ def test_conditionals(datafiles, tmp_path):
                            'allowedTypes': ['string', ''], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 14,
                            'allowedTypes': [], 'allowedClasses': []},
-                       {'filename': 'conditionals_test.php', 'lineNumber': 21,
+                       {'filename': 'conditionals_test.php', 'lineNumber': 20,
                            'allowedTypes': [], 'allowedClasses': []},
-                       {'filename': 'conditionals_test.php', 'lineNumber': 25,
+                       {'filename': 'conditionals_test.php', 'lineNumber': 24,
                            'allowedTypes': ['string', ''], 'allowedClasses': []},
-                       {'filename': 'conditionals_test.php', 'lineNumber': 29,
+                       {'filename': 'conditionals_test.php', 'lineNumber': 28,
                            'allowedTypes': ['string', ''], 'allowedClasses': []},
-                       {'filename': 'conditionals_test.php', 'lineNumber': 33,
+                       {'filename': 'conditionals_test.php', 'lineNumber': 32,
                            'allowedTypes': [], 'allowedClasses': []}
                        ]
     assert compare_results(expected_result, results)
