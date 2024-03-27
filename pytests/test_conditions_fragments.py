@@ -63,7 +63,7 @@ def test_conditions_two_calls_test(datafiles, tmp_path):
     expected_result = [{'filename': 'conditions_two_calls_test.php',
                         'lineNumber': 30, 'allowedTypes': ['LoneClass'], 'allowedClasses': ['LoneClass']},
                        {'filename': 'conditions_two_calls_test.php', 'lineNumber': 34,
-                        'allowedTypes': ['FirstCall'], 'allowedClasses': ['FirstCall']}
+                        'allowedTypes': ['FirstClass'], 'allowedClasses': ['FirstClass']}
                        ]
     assert compare_results(expected_result, results)
 
