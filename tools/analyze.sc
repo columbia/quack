@@ -757,7 +757,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
 
             val other_arg = call.argument.argumentIndex(other_idx).l(0)
             val other_arg_type = getNodeType(other_arg)
-            if (other_arg_type != "ANY") {
+            if (other_arg_type != "ANY" && other_arg_type != "deserialize.<returnValue>") {
 
               conds += createCondition("Exact",
                 mutable.Map("reason" -> "Ternary", "type" -> other_arg_type))
