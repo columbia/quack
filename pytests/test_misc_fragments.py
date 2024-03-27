@@ -2,18 +2,26 @@ import pytest
 from .conftest import SAMPLES_DIR
 from .utils import do_analysis, compare_results
 
-LIST_TEST_NAME = "array_slicing.php"
+LIST_TEST_NAME = "list-statement.php"
 # Note: this test currently fails, see Github Issue #23
 
 
 @pytest.mark.datafiles(SAMPLES_DIR / LIST_TEST_NAME)
-def test_array_slicing(datafiles, tmp_path):
+def test_list_construct(datafiles, tmp_path):
     fragment_path = datafiles / LIST_TEST_NAME
 
     results = do_analysis(fragment_path, tmp_path)
 
-    expected_result = [{'filename': 'array_slicing.php',
-                        'lineNumber': 3, 'allowedTypes': ['array'], 'allowedClasses': []}]
+    expected_result = [
+        {'filename': 'list-statement.php', 'lineNumber': 20,
+            'allowedTypes': ['FooClass'], 'allowedClasses': ['FooClass']},
+        {'filename': 'list-statement.php', 'lineNumber': 24,
+            'allowedTypes': ['FooClass'], 'allowedClasses': ['FooClass']},
+        {'filename': 'list-statement.php', 'lineNumber': 28,
+            'allowedTypes': ['BarClass'], 'allowedClasses': ['BarClass']},
+        {'filename': 'list-statement.php', 'lineNumber': 33,
+            'allowedTypes': ['FooClass', 'BarClass'], 'allowedClasses': ['FooClass', 'BarClass']},
+    ]
 
     assert compare_results(expected_result, results)
 
