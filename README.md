@@ -1,5 +1,7 @@
 # Quack
 
+![example workflow](https://github.com/columbia/quack/actions/workflows/run-pytests.yml/badge.svg)
+
 Quack is a code analysis tool to help PHP developers mitigate the risk of
 deserialization vulnerabilities in their applications. Quack restricts
 the set of classes that a deserialized object is allowed to take. Quack
