@@ -14,6 +14,7 @@ from pyutils.common_functions import get_elapsed_str, make_sure_dir_exists
 
 logging.root.setLevel(logging.INFO)
 
+# TODO: Move debug.log to output directory
 fhandler = logging.FileHandler("debug.log")
 fhandler.setLevel(logging.DEBUG)
 fhandler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
@@ -82,6 +83,7 @@ class PHPAnalyzer:
             make_sure_dir_exists(self.results_path)
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
+            # Format: [(file, line)]
             focus_lines = []
 
             # Run the Joern analysis
@@ -90,6 +92,10 @@ class PHPAnalyzer:
             joe_out_graph = self.results_path / "JOEGRAPH"
 
             def run_report_time(args, log_prefix, no_exit=False):
+                my_logger.info(f"{log_prefix} starting")
+                cmd_strs = [str(c) for c in args]
+                my_logger.debug(f"executing command: {' '.join(cmd_strs)}")
+
                 start_time = time()
                 joe_parse_cmd_ret: CompletedProcess = run(args, capture_output=True)
                 reported_times[log_prefix] = get_elapsed_str(start_time)
@@ -107,9 +113,26 @@ class PHPAnalyzer:
                 else:
                     my_logger.info(f"{log_prefix} finished successfully")
 
+            # Joern-Parse (graph creation) phase
+            #
+            # - Analyzes the target source code to create a Code Property Graph
+            #
+            # - Produces file:
+            #       JOEGRAPH
             run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
-                            "Joern-Prase (graph creation)")
+                            "Joern-Parse (graph creation)")
 
+            # Joern-Script[Analyze] phase
+            #
+            # - Analyzes unserialize calls in the target CPG to collect evidence
+            #   of their types, using static duck typing.
+            #
+            #   Either analyzes all unserialize calls, or restricts analysis to
+            #   only unserialize calls in "focus_lines"
+            #
+            # - Produces files:
+            #       joe_analyze.out
+            #       joe_analyze.out.warnings
             analysis_results_path = self.results_path.joinpath("joe_analyze.out")
             joern_analyze_params = ["joern", "--script", Path("tools", "analyze.sc"), "--param",
                                     f"cpgFile={joe_out_graph}", "--param", f"outFile={analysis_results_path}"]
@@ -119,6 +142,12 @@ class PHPAnalyzer:
                 joern_analyze_params.extend(["--param", f"focus_lines={focus_lines}"])
             run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
 
+            # Joern-Script[AvailClasses] phase
+            #
+            # - TODO
+            #
+            # - Produces file:
+            #       availclass.json
             avail_res_path = self.results_path.joinpath("availclass.json")
             psr4_path = Path("tools", "helpers", "get_psr4_mappings.php")
             run_report_time(
@@ -146,7 +175,13 @@ class PHPAnalyzer:
                 f.write(json.dumps(avail_classes_entries, indent=True))
             # END OF TODO
 
-            # Consolidate the available classes with the Psalm analysis results
+            # Policy generation phase
+            #
+            # - Analyzes the evidence produced in the Analyze phase and the
+            #   available classes produced in the AvailClasses phase to
+            #   compute the allowed classes policies for each unserialize call.
+            # - Produces file:
+            #       TODO
             result_entries = compute_allowed_classes(evidence_entries, avail_classes_entries)  # there should only be one project..
 
             # Write final results to results JSON file
@@ -163,6 +198,7 @@ def main():
     arg_parser.add_argument("project_path", help="Path to project to analyze", type=Path)
     arg_parser.add_argument("--output-path", type=Path, default=None,
                             help="Path for keeping Quack's outputs (defaults to project path)")
+    # TODO: Add argument for specifying focus lines
     args = arg_parser.parse_args()
 
     # User requested to analyze a specific project
