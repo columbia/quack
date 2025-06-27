@@ -150,10 +150,18 @@ class PHPAnalyzer:
             #       availclass.json
             avail_res_path = self.results_path.joinpath("availclass.json")
             psr4_path = Path("tools", "helpers", "get_psr4_mappings.php")
-            run_report_time(
-                ["joern", "--script", Path("tools", "resolve_includes.sc"), "--param", f"cpgFile={joe_out_graph}",
-                 "--param", f"outFile={avail_res_path}", "--param", f"psr4Script={psr4_path}"],
-                "Joern-Script[AvailClasses]")
+            joern_available_classes_params = [
+                "joern",
+                "--script", Path("tools", "resolve_includes.sc"),
+                "--param", f"cpgFile={joe_out_graph}",
+                "--param", f"outFile={avail_res_path}",
+                "--param", f"psr4Script={psr4_path}",
+            ]
+            if len(focus_lines) > 0:
+                focus_lines = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
+                my_logger.debug(f"Focus lines: {focus_lines}")
+                joern_available_classes_params.extend(["--param", f"focus_lines={focus_lines}"])
+            run_report_time(joern_available_classes_params, "Joern-Script[AvailClasses]", True)
 
             with self.results_path.joinpath("runtime_info.json").open("w") as f:
                 f.write(json.dumps(reported_times, indent=True))
