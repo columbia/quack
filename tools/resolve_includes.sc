@@ -111,7 +111,7 @@ var psr4_script : java.nio.file.Path = Paths.get("")
 var warnings = mutable.ListBuffer[String]()
 var errors = mutable.ListBuffer[String]()
 var unhandled_autoloader_files = List[RegexPath]()
-var logger : Logger = new Logger{ logLevel = Info };
+var logger : Logger = new Logger{ logLevel = Debug };
 
 val MAGIC_CONSTS : List[String] = List.apply("__DIR__", "__FILE__")
 val BUILTINS : List[String] = List.apply("dirname")
@@ -360,11 +360,17 @@ def resolve_avail_classes(
   project_files: List[RegexPath],
   included_files: mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]],
   files_to_classes: mutable.Map[RegexPath, mutable.ListBuffer[String]],
+  focus_lines: String = ""
   ) : List[AvailClassesEntry] = {
 
-    logger.debug("Resolving available classes")
+    logger.info("Resolving available classes")
 
     var unser_calls_all = cpg.call.name("unserialize") ++ cpg.call.name("maybe_unserialize") ++ cpg.call.name("deserialize") ++ cpg.call.name("dunserialize")
+    if (focus_lines != "") {
+      val focus_entries = focus_lines.split(",")
+      unser_calls_all = unser_calls_all.filter(x =>
+          focus_entries.contains(x.method.filename + ":" + x.lineNumber.getOrElse(-1).toString))
+    }
     // Group calls by filename
     // XXX: might have to change this to account for mid-file includes
     var unser_calls_grouped = unser_calls_all.groupBy(_.file.name.l(0))
@@ -378,7 +384,7 @@ def resolve_avail_classes(
       var files_to_add = mutable.ListBuffer[RegexPath]()
       files_to_add += full_filename
 
-      logger.debug("Adding includes backwards for " + full_filename)
+      logger.info("Adding includes backwards for " + full_filename)
       add_includes_backwards(full_filename, included_files, files_to_add)
 
       var avail_classes = mutable.ListBuffer[String]()
@@ -391,7 +397,7 @@ def resolve_avail_classes(
         // one cause filename might contain wildwards)
         val incl_filename = files_to_add.remove(0)
 
-        logger.debug("Adding classes from " + incl_filename)
+        logger.info("Adding classes from " + incl_filename)
 
         val incl_classes = mutable.ListBuffer[String]()
         for ((filename, classes) <- files_to_classes) {
@@ -406,7 +412,7 @@ def resolve_avail_classes(
         // Add all the files included by the current file to the list of files to add
         for (included <- get_included_files(incl_filename, included_files, project_files)) {
             if (!checked_files.contains(included) && !files_to_add.contains(included)) {
-                logger.debug("Adding " + included + " to files to check")
+                logger.info("Adding " + included + " to files to check")
                 files_to_add += included
             }
         }
@@ -420,7 +426,7 @@ def resolve_avail_classes(
 
 }
 
-@main def exec(cpgFile: String, outFile: String, psr4Script: String) = {
+@main def exec(cpgFile: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
 
   importCpg(cpgFile)
 
@@ -503,13 +509,14 @@ def resolve_avail_classes(
     val included_arg = include_directive.argument.l(0)
     val included_path = get_include_path(including_filename, included_arg)
 
-    logger.debug("Resolved include path for " + including_filename + ":" + line + ": " + included_path)
+    logger.info("Resolved include path for " + including_filename + ":" + line + ": " + included_path)
 
     if (included_path.endsWith(".php")) {
       included_files_map.getOrElseUpdate(including_filename, mutable.ListBuffer[RegexPath]()) += included_path
     }
   }
 
+  logger.info("Moving on")
   // If the project has a Composer-generated autoloader, add the autoloaded
   // files in the results as well
   if (Files.exists(autoload_file_path.asPath())) {
@@ -531,10 +538,12 @@ def resolve_avail_classes(
     }
   }
 
+  logger.info("Finalizing")
+
   files_to_classes_map.mkString("\n") #> (outFile + ".files_to_classes")
   included_files_map.mkString("\n") #> (outFile + ".included_files")
 
-  val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map)
+  val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map, focus_lines)
   val avail_classes_json: String = write(avail_classes)
 
   avail_classes_json #> outFile
