@@ -78,7 +78,7 @@ class PHPAnalyzer:
             # Make sure the provided project exists
             if not self.project_path.exists():
                 my_logger.error(f"Project path({self.project_path}) does not exist")
-                exit(os.EX_NOINPUT)
+                exit(os.EX_NOINPUT
 
             make_sure_dir_exists(self.results_path)
             reported_times = {}
@@ -119,8 +119,8 @@ class PHPAnalyzer:
             #
             # - Produces file:
             #       JOEGRAPH
-            run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
-                            "Joern-Parse (graph creation)")
+            #run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
+                            #"Joern-Parse (graph creation)")
 
             # Joern-Script[Analyze] phase
             #
@@ -134,13 +134,17 @@ class PHPAnalyzer:
             #       joe_analyze.out
             #       joe_analyze.out.warnings
             analysis_results_path = self.results_path.joinpath("joe_analyze.out")
-            joern_analyze_params = ["joern", "--script", Path("tools", "analyze.sc"), "--param",
-                                    f"cpgFile={joe_out_graph}", "--param", f"outFile={analysis_results_path}"]
+            joern_analyze_params = [
+                "joern", 
+                "--script", Path("tools", "analyze.sc"), 
+                "--param", f"cpgFile={joe_out_graph}", 
+                "--param", f"outFile={analysis_results_path}"
+            ]
             if len(focus_lines) > 0:
-                focus_lines = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
+                focus_lines_str = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
                 my_logger.debug(f"Focus lines: {focus_lines}")
-                joern_analyze_params.extend(["--param", f"focus_lines={focus_lines}"])
-            run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
+                joern_analyze_params.extend(["--param", f"focus_lines={focus_lines_str}"])
+            #run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
 
             # Joern-Script[AvailClasses] phase
             #
@@ -158,9 +162,9 @@ class PHPAnalyzer:
                 "--param", f"psr4Script={psr4_path}",
             ]
             if len(focus_lines) > 0:
-                focus_lines = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
+                focus_lines_str = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
                 my_logger.debug(f"Focus lines: {focus_lines}")
-                joern_available_classes_params.extend(["--param", f"focus_lines={focus_lines}"])
+                joern_available_classes_params.extend(["--param", f"focus_lines={focus_lines_str}"])
             run_report_time(joern_available_classes_params, "Joern-Script[AvailClasses]", True)
 
             with self.results_path.joinpath("runtime_info.json").open("w") as f:
