@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from runner import PHPAnalyzer
 
@@ -75,10 +76,11 @@ def compare_results(expected, actual, base_path) -> bool:
         print_failure(expected, actual, "Number of results not equal")
         return False
 
-    expected = [
-        {**item, "filename": str(base_path / item["filename"] / item["filename"])}
-        for item in expected
+    actual = [
+        {**item, "filename": str(Path(item["filename"]).relative_to(base_path))}
+        for item in actual
     ]
+
     sorted_expected = sort_by_line_number(expected)
     sorted_actual = sort_by_line_number(actual)
 

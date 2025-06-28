@@ -15,7 +15,7 @@ def test_comment_types_test(datafiles, tmp_path):
     expected_result = [{'filename': 'comment_types_test.php',
                         'lineNumber': 8, 'allowedTypes': ['mixed'], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results, tmp_path)
+    assert compare_results(expected_result, results, fragment_path)
 
 
 COMMENT_TYPES_TEST2_NAME = "comment_types_test2.php"
@@ -30,4 +30,4 @@ def test_comment_types_test2(datafiles, tmp_path):
     expected_result = [{'filename': 'comment_types_test2.php',
                         'lineNumber': 30, 'allowedTypes': ['float'], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results, tmp_path)
+    assert compare_results(expected_result, results, fragment_path)

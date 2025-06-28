@@ -22,7 +22,7 @@ def test_simple_print(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results, tmp_path)
+    assert compare_results(expected_result, results, fragment_path)
 
 
 TEST_PRINT_LIST_NAME = "list_print_test.php"
@@ -44,7 +44,7 @@ def test_print_list(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results, tmp_path)
+    assert compare_results(expected_result, results, fragment_path)
 
 
 # Test two simple string cases
@@ -72,4 +72,4 @@ def test_two_prints(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results, tmp_path)
+    assert compare_results(expected_result, results, fragment_path)

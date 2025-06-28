@@ -596,7 +596,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               // Get the classes that have a field with this name
               val field_name = field_identifier.asInstanceOf[FieldIdentifier].canonicalName
               val field_members = memberCache.getOrElse(field_name, List.empty)
-              val classes_with_field = field_members.flatMap(_.typeDecl.name).mkString("|")
+              val classes_with_field = field_members.map(_.typeDecl.name).mkString("|")
 
               conds += createCondition("Duck",
                 mutable.Map("reason" -> "HasField",
