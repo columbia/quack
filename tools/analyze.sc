@@ -75,7 +75,7 @@ import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
-
+import scala.annotation.tailrec
 import java.nio.file.{Path, Paths, Files}
 
 import upickle.default.*
@@ -173,23 +173,34 @@ def isBuiltIn(method: Method) : Boolean = {
   return is_builtin
 }
 
-// Get the id of the scope of the given node in the CPG
+@tailrec
 def getScopeId(n: AstNode) : Long = {
-
-  if (n._astIn.length == 0) {
-    return -1
+  // Check if the node has a parent in the AST.
+  if (n._astIn.isEmpty) {
+    return -1L
   }
 
   val parent = n.astParent
 
-  return if (parent.isCall) parent.asInstanceOf[CallNode].method.id
-  else if (parent.isReturn) parent.asInstanceOf[Return].method.id
-  else if (parent.isMethod) parent.asInstanceOf[Method].id
-  else if (parent.isTypeDecl) parent.asInstanceOf[TypeDecl].id
-  else if (parent.isControlStructure || parent.isBlock) getScopeId(parent.astParent)
-  else throw new Exception("Unknown node in scope id check: " + parent)
-
+  if (parent.isCall) {
+    // A Call node has a direct reference to its containing method.
+    parent.asInstanceOf[CallNode].method.id
+  } else if (parent.isReturn) {
+    parent.asInstanceOf[Return].method.id
+  } else if (parent.isMethod) {
+    parent.id // The parent is the method itself.
+  } else if (parent.isTypeDecl) {
+    parent.id // The parent is the class/trait itself.
+  } else if (parent.isControlStructure || parent.isBlock) {
+    // This is the recursive step: continue searching upwards from the parent.
+    getScopeId(parent)
+  } else {
+    // For any other intermediate node, continue searching upwards.
+    // This handles cases like expressions within expressions.
+    getScopeId(parent)
+  }
 }
+
 
 // Add the classes that have a __toString method to the evidence
 def addHaveToString(conds: ListBuffer[Map[String, String]]) = {
