@@ -84,7 +84,7 @@ class PHPAnalyzer:
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
             # Format: [(file, line)]
-            focus_lines = [("question/type/ddwtos/questiontype.php", 93)]
+            focus_lines = []
 
             # Run the Joern analysis
             my_logger.info("Running joern analysis")
