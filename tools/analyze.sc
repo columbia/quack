@@ -126,36 +126,25 @@ def createCondition(condType: String, extra: mutable.Map[String, String]=mutable
 // Returns the type of the node, or all the dynamic type hints separated with '|'
 // Returns ANY if type is not known
 def getNodeType(n: AstNode) : String = {
-
-  // FIXME collect type if node is call
-  if (n.isInstanceOf[CallNode] || n.isInstanceOf[Block]) {
-    return "ANY"
+  val (typeFullName, dynamicTypeHints) = n match {
+    case id: Identifier        => (id.typeFullName, id.dynamicTypeHintFullName)
+    case mr: MethodReturn      => (mr.typeFullName, mr.dynamicTypeHintFullName)
+    case p: MethodParameterIn  => (p.typeFullName, p.dynamicTypeHintFullName)
+    case l: Literal            => (l.typeFullName, l.dynamicTypeHintFullName)
+    case m: Member             => (m.typeFullName, m.dynamicTypeHintFullName)
+    case _: CallNode | _: Block => ("ANY", Seq.empty[String])
+    case _ =>
+      throw new Exception("Got unknown type of node for extracting type: " + n)
   }
 
-  val type_full_name = if (n.isIdentifier) n.asInstanceOf[Identifier].typeFullName
-  else if (n.isInstanceOf[MethodReturn]) n.asInstanceOf[MethodReturn].typeFullName
-  else if (n.isInstanceOf[MethodParameterIn]) n.asInstanceOf[MethodParameterIn].typeFullName
-  else if (n.isInstanceOf[Literal]) n.asInstanceOf[Literal].typeFullName
-  else if (n.isInstanceOf[Member]) n.asInstanceOf[Member].typeFullName
-  else throw new Exception("Got unknown type of node for extracting type: " + n)
-
-  val type_full_name_str = type_full_name.asInstanceOf[String]
-
-  val dynamic_type_hints = if (n.isIdentifier) n.asInstanceOf[Identifier].dynamicTypeHintFullName
-  else if (n.isInstanceOf[MethodReturn]) n.asInstanceOf[MethodReturn].dynamicTypeHintFullName
-  else if (n.isInstanceOf[MethodParameterIn]) n.asInstanceOf[MethodParameterIn].dynamicTypeHintFullName
-  else if (n.isInstanceOf[Literal]) n.asInstanceOf[Literal].dynamicTypeHintFullName
-  else if (n.isInstanceOf[Member]) n.asInstanceOf[Member].dynamicTypeHintFullName
-  else throw new Exception("Got unknown type of node for extracting type: " + n)
-
-  if (type_full_name_str == "ANY") {
-    if (dynamic_type_hints.asInstanceOf[Seq[String]].nonEmpty) {
-      dynamic_type_hints.asInstanceOf[Seq[String]].mkString("|")
+  if (typeFullName == "ANY") {
+    if (dynamicTypeHints.nonEmpty) {
+      dynamicTypeHints.mkString("|")
     } else {
-      return "ANY"
+      "ANY"
     }
   } else {
-    return type_full_name_str
+    typeFullName
   }
 }
 
