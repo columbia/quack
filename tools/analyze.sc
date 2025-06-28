@@ -166,29 +166,17 @@ def isBuiltIn(method: Method) : Boolean = {
 // Get the id of the scope of the given node in the CPG
 @tailrec
 def getScopeId(n: AstNode) : Long = {
-  // Check if the node has a parent in the AST.
   if (n._astIn.isEmpty) {
-    return -1L
-  }
-
-  val parent = n.astParent
-
-  if (parent.isCall) {
-    // A Call node has a direct reference to its containing method.
-    parent.asInstanceOf[CallNode].method.id
-  } else if (parent.isReturn) {
-    parent.asInstanceOf[Return].method.id
-  } else if (parent.isMethod) {
-    parent.id // The parent is the method itself.
-  } else if (parent.isTypeDecl) {
-    parent.id // The parent is the class/trait itself.
-  } else if (parent.isControlStructure || parent.isBlock) {
-    // This is the recursive step: continue searching upwards from the parent.
-    getScopeId(parent)
+    -1L
   } else {
-    // For any other intermediate node, continue searching upwards.
-    // This handles cases like expressions within expressions.
-    getScopeId(parent)
+    n.astParent match {
+      case call: CallNode   => call.method.id
+      case ret: Return      => ret.method.id
+      case method: Method   => method.id
+      case typeDecl: TypeDecl => typeDecl.id
+      case parent @ (_: ControlStructure | _: Block) => getScopeId(parent)
+      case parent           => getScopeId(parent) // Default case to recurse
+    }
   }
 }
 
