@@ -15,7 +15,7 @@ def test_docblock_simple(datafiles, tmp_path):
     expected_result = [{'filename': 'docblock_simple.php', 'lineNumber': 26,
                         'allowedTypes': ['mixed'], 'allowedClasses': ['ClassA', 'ClassB']}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 DOCBLOCK_TIEBREAK_NAME = "docblock_tiebreak.php"
@@ -32,7 +32,7 @@ def test_docblock_tiebreak(datafiles, tmp_path):
             'ClassA', 'ClassC', 'mixed'], 'allowedClasses': ['ClassC', 'ClassA']}
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 DOCBLOCK_RETURN_INCONSISTENT_TEST_NAME = "docblock_return_inconsistent.php"
@@ -47,4 +47,4 @@ def test_docblock_return_inconsistent(datafiles, tmp_path):
 
     expected_result = []
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

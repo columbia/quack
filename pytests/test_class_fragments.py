@@ -16,7 +16,7 @@ def test_class_test(datafiles, tmp_path):
             'allowedTypes': ['bool'], 'allowedClasses': []}
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 CLASS_THIS_TEST_NAME = "class_this_test.php"
@@ -31,7 +31,7 @@ def test_class_this_test(datafiles, tmp_path):
     expected_result = [{'filename': 'class_this_test.php',
                         'lineNumber': 6, 'allowedTypes': [], 'allowedClasses': ['Person']}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 CLASS_STORAGE_TEST_NAME = "class_storage_test.php"
@@ -46,4 +46,4 @@ def test_class_storage_test(datafiles, tmp_path):
     expected_result = [{'filename': 'class_storage_test.php', 'lineNumber': 33, 'allowedTypes': ['string', 'Template', 'InterestingClass', ''], 'allowedClasses': [
         'InterestingClass']}, {'filename': 'class_storage_test.php', 'lineNumber': 29, 'allowedTypes': ['InterestingClass'], 'allowedClasses': ['InterestingClass']}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

@@ -23,7 +23,7 @@ def test_simple_project(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 # Test simple string case inside a project
@@ -51,4 +51,4 @@ def test_multi_project(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

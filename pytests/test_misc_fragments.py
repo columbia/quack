@@ -23,7 +23,7 @@ def test_list_construct(datafiles, tmp_path):
             'allowedTypes': ['FooClass', 'BarClass'], 'allowedClasses': ['FooClass', 'BarClass']},
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 AST_PARENTS_TEST_NAME = "AST_parents_test.php"
@@ -67,7 +67,7 @@ def test_AST_parents_test(datafiles, tmp_path):
             'allowedTypes': [], 'allowedClasses': []}
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 FUGIO_INSPIRED_TEST_NAME = "fugio_inspired_test.php"
@@ -82,7 +82,7 @@ def test_fugio_inspired_test(datafiles, tmp_path):
     expected_result = [{'filename': 'fugio_inspired_test.php',
                         'lineNumber': 8, 'allowedTypes': [''], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 GETTYPE_SWITCH_TEST_NAME = "gettype_switch_test.php"
@@ -103,7 +103,7 @@ def test_gettype_switch_test(datafiles, tmp_path):
         }
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 MAYBE_UNSERIALIZE_TEST_NAME = "maybe_unserialize_test.php"
@@ -118,7 +118,7 @@ def test_maybe_unserialize_test(datafiles, tmp_path):
     expected_result = [{'filename': 'maybe_unserialize_test.php',
                         'lineNumber': 6, 'allowedTypes': ['string', ''], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 RECURSIVE_VAR_USE_TEST_NAME = "recursive_var_use_test.php"
@@ -139,7 +139,7 @@ def test_recursive_var_use_test(datafiles, tmp_path):
             'allowedTypes': ['numeric'], 'allowedClasses': []}
     ]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 TOSTRING_TEST_NAME = "tostring_test.php"
@@ -154,4 +154,4 @@ def test_tostring_test(datafiles, tmp_path):
     expected_result = [{'filename': 'tostring_test.php', 'lineNumber': 24, 'allowedTypes': [
         'string', 'mixed', 'string', 'HasToString', 'mixed'], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

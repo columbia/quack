@@ -19,7 +19,7 @@ def test_include_directive_project(datafiles, tmp_path):
         {'filename': 'src/ConstantIncl.php', 'lineNumber': 7,
             'allowedTypes': [], 'allowedClasses': ['Constant']}
     ]
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 INCLUDE_TEST_NAME = 'include_test'
@@ -54,4 +54,4 @@ def test_autoload_project(datafiles, tmp_path):
 
     expected_result = [{'filename': 'index.php', 'lineNumber': 19, 'allowedTypes': [
         'string', '', 'AnotherClass', 'MyClass', 'MyOtherClass'], 'allowedClasses': []}]
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

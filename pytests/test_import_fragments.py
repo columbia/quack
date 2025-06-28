@@ -18,4 +18,4 @@ def test_mid_file_import_test(datafiles, tmp_path):
     expected_result = [{'filename': 'mid_file_import_test.php', 'lineNumber': 6, 'allowedTypes': [], 'allowedClasses': []}, {'filename': 'mid_file_import_test.php',
                                                                                                                              'lineNumber': 15, 'allowedTypes': [], 'allowedClasses': []}, {'filename': 'mid_file_import_test.php', 'lineNumber': 18, 'allowedTypes': [], 'allowedClasses': []}]
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

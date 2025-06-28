@@ -15,7 +15,7 @@ def test_local_arg_conflict(datafiles, tmp_path):
                       'allowedTypes': ['string', '', 'mixed'], 'allowedClasses': []}]
 
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)
 
 
 LOCAL_ARG_NOCONFLICT = "local-arg-noconflict.php"
@@ -31,4 +31,4 @@ def test_local_arg_noconflict(datafiles, tmp_path):
                       'allowedTypes': ['string', '', 'mixed'], 'allowedClasses': []}]
 
 
-    assert compare_results(expected_result, results)
+    assert compare_results(expected_result, results, tmp_path)

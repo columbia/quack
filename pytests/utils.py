@@ -70,11 +70,15 @@ def compare_call_result(expected: dict, actual: dict) -> bool:
     return True
 
 
-def compare_results(expected, actual) -> bool:
+def compare_results(expected, actual, base_path) -> bool:
     if len(expected) != len(actual):
         print_failure(expected, actual, "Number of results not equal")
         return False
 
+    expected = [
+        {**item, "filename": str(base_path / item["filename"] / item["filename"])}
+        for item in expected
+    ]
     sorted_expected = sort_by_line_number(expected)
     sorted_actual = sort_by_line_number(actual)
 
