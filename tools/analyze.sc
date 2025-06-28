@@ -203,8 +203,7 @@ def addHaveToString(conds: ListBuffer[Map[String, String]]) = {
 def collectParameterUses(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
   parameter: MethodParameterIn, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
-  val parameter_uses = parameter.in("REF").map(_.asInstanceOf[AstNode])
-    println(parameter_uses.size)
+  val parameter_uses = parameter.in("REF").map(_.asInstanceOf[AstNode]).filter(n => getScopeId(n) == parameter.method.id)
 
   // Iterate and collect evidence
   for (use <- parameter_uses) {
