@@ -302,8 +302,7 @@ def collectFieldUses(conds: ListBuffer[Map[String, String]], analyzed: mutable.S
     // Get all field identifiers that are part of a field access operation (should
     // always be but just sanity check), then get their respective objects, and
     // filter only the ones that are of type 'the_class'
-    val field_uses = cpg.all.filter(_.isInstanceOf[FieldIdentifier])
-      .map(_.asInstanceOf[FieldIdentifier]).canonicalName(member.name).astParent
+    val field_uses = cpg.fieldIdentifier.canonicalName(member.name).astParent
       .filter(x => (x.isInstanceOf[CallNode] && x.asInstanceOf[CallNode].name == "<operator>.fieldAccess"))
       .map(_.asInstanceOf[CallNode]).map(_.argument.l(0))
       .filter(x => (x.isIdentifier && x.asInstanceOf[Identifier].typeFullName == the_class.name)).l
