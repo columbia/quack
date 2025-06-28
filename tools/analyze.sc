@@ -8,67 +8,67 @@
  * the evaluated projects, and can be addressed if encountered in future proejcts
  *
  * Type matching for rules for unserialized values (corresponds to Table I):
- *  - Exact -- evidence for exact type
- *    - type -- the type we deduced
- *    - reason -- reason for the decision
- *      - FuncArg -- TypeOf(parameter of function or static method value was passed to)
- *      - MethodArg -- TypeOf(parameter of method value was passed to)
- *      - Return -- TypeOf(return value of encapsulating method/function)
- *      - Cast -- Type value was cast to
- *      - Ternary -- Type of other value in ternary operator
- *      - Compared -- compared to value of this type
- *      - StringOp -- was used in a string operator (e.g., concat)
- *      - Scalar -- part of a scalar operation
- *      - Arithmetic -- was used in an arithmetic operator
- *      - DynamicCall -- used in a dynamic call so we can't say anything about its
- *      type. When this is encountered, this value is just a placeholder meaning
- *      all types should be allowed
- *  - Duck -- evidence for duck typing
- *    - types -- the types we deduced, separated with '|'
- *    - reason -- reason for the decision
- *      - HasMethod -- has method that was called on unserialized object
- *      - HasField -- has field that was accessed on unserialized object
- *      - HasToString -- has __toString method and was used in a String operator
- *      - AssignedToField -- was assigned to a field (property) with known/deduced type
+ * - Exact -- evidence for exact type
+ * - type -- the type we deduced
+ * - reason -- reason for the decision
+ * - FuncArg -- TypeOf(parameter of function or static method value was passed to)
+ * - MethodArg -- TypeOf(parameter of method value was passed to)
+ * - Return -- TypeOf(return value of encapsulating method/function)
+ * - Cast -- Type value was cast to
+ * - Ternary -- Type of other value in ternary operator
+ * - Compared -- compared to value of this type
+ * - StringOp -- was used in a string operator (e.g., concat)
+ * - Scalar -- part of a scalar operation
+ * - Arithmetic -- was used in an arithmetic operator
+ * - DynamicCall -- used in a dynamic call so we can't say anything about its
+ * type. When this is encountered, this value is just a placeholder meaning
+ * all types should be allowed
+ * - Duck -- evidence for duck typing
+ * - types -- the types we deduced, separated with '|'
+ * - reason -- reason for the decision
+ * - HasMethod -- has method that was called on unserialized object
+ * - HasField -- has field that was accessed on unserialized object
+ * - HasToString -- has __toString method and was used in a String operator
+ * - AssignedToField -- was assigned to a field (property) with known/deduced type
  *
  * Collected conditions types for unserialized values (for debugging purposes):
- *  - ArgToFuncIdx/ArgToMethodIdx -- Passed as argument Idx to function (or static method)/method Arg-To-Func/Method
- *    - callerFullName: full name of function/method value is being passed to
- *    - callerName: name of function/method value is being passed to
- *    - argIdx: argument index value is being passed to
- *  - Returns -- is returned
- *    - methodName: name of method that returns the value
- *  - Conditional -- part of a conditional (e.g., ternary)
- *    - argIdx: argument index of conditional value is being passed to (e.g., in ternary, 'true ? "a" : unserialize($x)', would be index 1)
- *  - AssignedToArrayIdx -- is assigned to an array index (e.g., $array[$idx] = unserialize())
- *    - array: code of array value was assigned to (e.g., for '$array[$idx] = unserialize()', array is '$array')
- *    - arrayIdx: code of array index value was assigned to (e.g., for '$array[$idx] = unserialize()', arrayIdx is '$idx')
- *  - AssignedToField -- is assigned to the field of an object
- *    - objectName: Name of object (variable) that has the field
- *    - fieldType: Property or variable
- *    - fieldName: Name of field (or variable)
- *  - CallsMethod -- an object and calls a method (e.g., $x = unserialize(); $x->hello())
- *    - methodFullName: full name of method being called
- *    - methodName: name of method being called
- *  - ArrayRef -- is referenced as an array (a[<int>|<str>]).
- *                 Actually this can also be a string access (str[int-offset])
- *    - arrayIdx: similar to AssignedToArrayIdx
- *  - Scalar -- part of a scalar operation
- *    - type: type of scalar
- *  - FieldAccess -- accessing a field/property (read or write) on a tainted var
- *    - fieldName: Name of field being accessed
- *    - varFieldName: Name of variable representing field being accessed
- *  - Iterated -- was used in an iterator
- *  - Comparison -- was used in a comparison
- *    - comparisonType: type of comparison (e.g., comparison with literal, comparison with call (i.e., return value), comparison with variable etc.)
- *    - comparedValue: type of literal in literal comparison, name of function in call comparison, var name in var (identifier) comparison
- *  - ArithmeticOp -- was used in an arithmetic operation
- *  - LogicalOp -- was used in an logical operation
- *    - type: operator name
- *  - InstanceOf -- was passed to instanceOf
- *    - class: class being checked against
- *  - ClassAlloc -- was used as a dynamic class name for a class allocation (new $var())
- *  - ByRef -- was passed by reference or assigned by reference
+ * - ArgToFuncIdx/ArgToMethodIdx -- Passed as argument Idx to function (or static method)/method Arg-To-Func/Method
+ * - callerFullName: full name of function/method value is being passed to
+ * - callerName: name of function/method value is being passed to
+ * - argIdx: argument index value is being passed to
+ * - Returns -- is returned
+ * - methodName: name of method that returns the value
+ * - Conditional -- part of a conditional (e.g., ternary)
+ * - argIdx: argument index of conditional value is being passed to (e.g., in ternary, 'true ? "a" : unserialize($x)', would be index 1)
+ * - AssignedToArrayIdx -- is assigned to an array index (e.g., $array[$idx] = unserialize())
+ * - array: code of array value was assigned to (e.g., for '$array[$idx] = unserialize()', array is '$array')
+ * - arrayIdx: code of array index value was assigned to (e.g., for '$array[$idx] = unserialize()', arrayIdx is '$idx')
+ * - AssignedToField -- is assigned to the field of an object
+ * - objectName: Name of object (variable) that has the field
+ * - fieldType: Property or variable
+ * - fieldName: Name of field (or variable)
+ * - CallsMethod -- an object and calls a method (e.g., $x = unserialize(); $x->hello())
+ * - methodFullName: full name of method being called
+ * - methodName: name of method being called
+ * - ArrayRef -- is referenced as an array (a[<int>|<str>]).
+ * Actually this can also be a string access (str[int-offset])
+ * - arrayIdx: similar to AssignedToArrayIdx
+ * - Scalar -- part of a scalar operation
+ * - type: type of scalar
+ * - FieldAccess -- accessing a field/property (read or write) on a tainted var
+ * - fieldName: Name of field being accessed
+ * - varFieldName: Name of variable representing field being accessed
+ * - Iterated -- was used in an iterator
+ * - Comparison -- was used in a comparison
+ * - comparisonType: type of comparison (e.g., comparison with literal, comparison with call (i.e., return value), comparison with variable etc.)
+ * - comparedValue: type of literal in literal comparison, name of function in call comparison, var name in var (identifier) comparison
+ * - ArithmeticOp -- was used in an arithmetic operation
+ * - LogicalOp -- was used in an logical operation
+ * - type: operator name
+ * - InstanceOf -- was passed to instanceOf
+ * - class: class being checked against
+ * - ClassAlloc -- was used as a dynamic class name for a class allocation (new $var())
+ * - ByRef -- was passed by reference or assigned by reference
  */
 
 import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
@@ -76,6 +76,7 @@ import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 import scala.annotation.tailrec
+
 import java.nio.file.{Path, Paths, Files}
 
 import upickle.default.*
@@ -162,6 +163,7 @@ def isBuiltIn(method: Method) : Boolean = {
   return is_builtin
 }
 
+// Get the id of the scope of the given node in the CPG
 @tailrec
 def getScopeId(n: AstNode) : Long = {
   // Check if the node has a parent in the AST.
@@ -190,9 +192,8 @@ def getScopeId(n: AstNode) : Long = {
   }
 }
 
-
 // Add the classes that have a __toString method to the evidence
-def addHaveToString(conds: ListBuffer[Map[String, String]]) = {
+def addHaveToString(conds: mutable.Set[Map[String, String]]) = {
     val have_to_string = cpg.method.name("__toString").typeDecl.name.mkString("|")
     conds += createCondition("Duck",
       mutable.Map("reason" -> "HasToString",
@@ -200,7 +201,7 @@ def addHaveToString(conds: ListBuffer[Map[String, String]]) = {
 }
 
 // Follow all uses for the given parameter in the method/function
-def collectParameterUses(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
+def collectParameterUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
   parameter: MethodParameterIn, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
   val parameter_uses = parameter.in("REF").map(_.asInstanceOf[AstNode]).filter(n => getScopeId(n) == parameter.method.id)
@@ -216,7 +217,7 @@ def collectParameterUses(conds: ListBuffer[Map[String, String]], analyzed: mutab
 }
 
 // Collect uses of the parameter in a method
-def collectParameterUsesFromMethod(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
+def collectParameterUsesFromMethod(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
   method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
   // We reached max depth, stop here
@@ -241,7 +242,7 @@ def collectParameterUsesFromMethod(conds: ListBuffer[Map[String, String]], analy
 
 
 // Collect uses of the parameter in a function
-def collectParameterUsesFromFunc(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
+def collectParameterUsesFromFunc(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
   method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
   // We reached max depth, stop here
@@ -283,7 +284,7 @@ def helpsWithTyping(type_str: String) : Boolean = {
 }
 
 // Examine uses of the given class field in order to try to infer its type
-def collectFieldUses(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
+def collectFieldUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
   the_class: TypeDecl, member: Member, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
     println("Collecting field uses for field '" + member.name + "' of class '" + the_class.name + "'")
@@ -346,7 +347,7 @@ def tryInferSliceType(index_access: CallNode) : Set[String] = {
 }
 
 // Collect evidence from the given assigned deserialized variable
-def followAssignedVar(conds: ListBuffer[Map[String, String]], assigned_var: AstNode,
+def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: AstNode,
   analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
   println("Following assignment to: " + getNodeName(assigned_var) + " (" + assigned_var + ")")
@@ -503,7 +504,7 @@ def extractIteratorVariable(iterator_parent: AstNode) : AstNode = {
 
 // The main function that applies the typing rules on a given deserialized node
 // and collects type information
-def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
+def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
   analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
   // We reached max depth, stop here
@@ -1103,7 +1104,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
   // Iterate through each deserialization call and collect evidence
   for (call <- calls) {
     println(call.file.name.l(0) + ":" + call.lineNumber.getOrElse(-1))
-    var conditions = new ListBuffer[Map[String, String]]()
+    var conditions = mutable.Set[Map[String, String]]()
     // Call the main function that implements the type inference algorithm
     extractConditions(conditions, call, analyzed_node_ids, 0, warnings)
 
