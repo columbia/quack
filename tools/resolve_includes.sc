@@ -10,7 +10,7 @@
 //  [ ] - Optimize when paths are fully resolved
 
 import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
-import io.shiftleft.semanticcpg.language.Traversal
+import io.shiftleft.semanticcpg.language._
 import scala.collection.mutable
 import scala.sys.process._
 import java.nio.file.{Path, Paths, Files}
@@ -43,6 +43,20 @@ trait Logger {
     }
   }
 }
+
+def writeFile(path: String, content: String): Unit = {
+  try {
+    val parentDir = Paths.get(path).getParent
+    if (parentDir != null) Files.createDirectories(parentDir)
+    Files.writeString(Paths.get(path), content)
+    logger.info(s"Successfully wrote ${content.length} bytes to $path")
+  } catch {
+    case e: Exception =>
+      logger.error(s"[!] ERROR: Failed to write to file $path.")
+      logger.error(s"    Reason: ${e.getMessage}")
+  }
+}
+
 
 var project_root : String = ""
 var psr4_script : java.nio.file.Path = Paths.get("")
@@ -478,17 +492,18 @@ def resolve_avail_classes(
 
   logger.info("Finalizing")
 
-  files_to_classes_map.mkString("\n") #> (outFile + ".files_to_classes")
-  included_files_map.mkString("\n") #> (outFile + ".included_files")
+  writeFile(outFile + ".files_to_classes", files_to_classes_map.mkString("\n"))
+  writeFile(outFile + ".included_files", included_files_map.mkString("\n"))
 
   val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map, focus_lines)
   val avail_classes_json: String = write(avail_classes)
 
-  avail_classes_json #> outFile
-  // println(avail_classes_json)
+  writeFile(outFile, avail_classes_json)
+  println(avail_classes_json)
 
-  ("[" + warnings.mkString(",") + "]") #> outFileWarnings
-  ("[" + errors.mkString(",") + "]") #> outFileErrors
+  writeFile(outFileWarnings, "[" + warnings.mkString(",") + "]")
+  writeFile(outFileErrors, "[" + errors.mkString(",") + "]")
+
   // println(warnings)
   if (errors.nonEmpty) {
     println("Analysis finished with the following errors: ")
