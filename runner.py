@@ -78,13 +78,13 @@ class PHPAnalyzer:
             # Make sure the provided project exists
             if not self.project_path.exists():
                 my_logger.error(f"Project path({self.project_path}) does not exist")
-                exit(os.EX_NOINPUT
+                exit(os.EX_NOINPUT)
 
             make_sure_dir_exists(self.results_path)
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
             # Format: [(file, line)]
-            focus_lines = []
+            focus_lines = [("question/type/ddwtos/questiontype.php", 93)]
 
             # Run the Joern analysis
             my_logger.info("Running joern analysis")
@@ -119,8 +119,8 @@ class PHPAnalyzer:
             #
             # - Produces file:
             #       JOEGRAPH
-            #run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
-                            #"Joern-Parse (graph creation)")
+            run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
+                            "Joern-Parse (graph creation)")
 
             # Joern-Script[Analyze] phase
             #
@@ -144,7 +144,7 @@ class PHPAnalyzer:
                 focus_lines_str = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
                 my_logger.debug(f"Focus lines: {focus_lines}")
                 joern_analyze_params.extend(["--param", f"focus_lines={focus_lines_str}"])
-            #run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
+            run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
 
             # Joern-Script[AvailClasses] phase
             #
