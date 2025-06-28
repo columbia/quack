@@ -76,12 +76,47 @@ import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
+import java.nio.file.{Path, Paths, Files}
+
 import upickle.default.*
+
+def join_paths(p1: String, p2: String) : String = {
+    return Paths.get(p1, p2).normalize().toString()
+}
+
+def writeFile(path: String, content: String): Unit = {
+  try {
+    val parentDir = Paths.get(path).getParent
+    if (parentDir != null) Files.createDirectories(parentDir)
+    Files.writeString(Paths.get(path), content)
+    // logger.info(s"Successfully wrote ${content.length} bytes to $path")
+  } catch {
+    case e: Exception =>
+      // logger.error(s"[!] ERROR: Failed to write to file $path.")
+      // logger.error(s"    Reason: ${e.getMessage}")
+  }
+}
 
 var maxDepth: Int = 3
 var built_in_log = "/processed/builtins.txt"
 
 case class UnserEntry(filename: String, lineNumber: Integer, conditions: Set[Map[String, String]]) derives ReadWriter
+
+def getNodeName(n: AstNode): String = {
+  n match {
+    case id: Identifier => id.name
+    case call: CallNode => call.name
+    case method: Method => method.name
+    case param: MethodParameterIn => param.name
+    case ret: MethodReturn => ret.typeFullName // Returns don't have a name, type is descriptive
+    case local: Local => local.name
+    case member: Member => member.name
+    case typeDecl: TypeDecl => typeDecl.name
+    case literal: Literal => literal.code
+    case block: Block => "BLOCK"
+    case _ => "UNKNOWN_NODE" // Default fallback
+  }
+}
 
 // Add new evidence
 def createCondition(condType: String, extra: mutable.Map[String, String]=mutable.Map()): Map[String, String] = {
@@ -113,11 +148,9 @@ def getNodeType(n: AstNode) : String = {
   else if (n.isInstanceOf[Member]) n.asInstanceOf[Member].dynamicTypeHintFullName
   else throw new Exception("Got unknown type of node for extracting type: " + n)
 
-  val dynamic_type_hints_iter = dynamic_type_hints.asInstanceOf[ArraySeq[String]]
-
   if (type_full_name_str == "ANY") {
-    if (dynamic_type_hints_iter.length != 0) {
-      dynamic_type_hints_iter.l.mkString("|")
+    if (dynamic_type_hints.asInstanceOf[Seq[String]].nonEmpty) {
+      dynamic_type_hints.asInstanceOf[Seq[String]].mkString("|")
     } else {
       return "ANY"
     }
@@ -170,20 +203,12 @@ def addHaveToString(conds: ListBuffer[Map[String, String]]) = {
 def collectParameterUses(conds: ListBuffer[Map[String, String]], analyzed: mutable.Set[Long],
   parameter: MethodParameterIn, depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
-  // Get the refs of the parameter in the method
-  val refs = cpg.graph.edges.filter(_.isInstanceOf[Ref]).l
-  val parameter_refs = refs.filter(e => {
-    (e.inNode.isInstanceOf[AstNode]) &&
-    (e.outNode.isInstanceOf[AstNode]) &&
-    (e.inNode.asInstanceOf[AstNode].id == parameter.id)
-  })
-
-  // Get the uses of the parameter
-  val parameter_uses = parameter_refs.map(n => n.outNode.asInstanceOf[AstNode])
-    .filter(n => getScopeId(n) == parameter.method.id)
+  val parameter_uses = parameter.in("REF").map(_.asInstanceOf[AstNode])
+    println(parameter_uses.size)
 
   // Iterate and collect evidence
   for (use <- parameter_uses) {
+    println(use)
     extractConditions(conds, use, analyzed, depth, warnings)
   }
 
@@ -207,10 +232,10 @@ def collectParameterUsesFromMethod(conds: ListBuffer[Map[String, String]], analy
     return false
   }
 
-  println("Following parameter use in method " + method.fullName)
-
   // Get the parameter
   val parameter = method.parameter.index(argIdx).l(0)
+
+  println("Following parameter " + parameter + " use in method " + method.fullName)
 
   collectParameterUses(conds, analyzed, parameter, depth, warnings)
 }
@@ -248,7 +273,13 @@ def helpsWithTyping(type_str: String) : Boolean = {
   // https://stackoverflow.com/questions/5522572/how-to-split-a-string-by-a-string-in-scala
   val types = type_str.split("\\|")
   // These don't give us any real type evidence
-  val types_filtered = types.filter(x => (x != "ANY" && x != "array" && x != "null" && !(x contains "->")))
+  val types_filtered = types.filter(x => (
+        x != "ANY" &&
+        !x.contains("<returnValue>") &&
+        x != "array" &&
+        x != "null" &&
+        !x.contains("->")
+      ))
   return (types_filtered.length > 0)
 }
 
@@ -320,7 +351,7 @@ def tryInferSliceType(index_access: CallNode) : Set[String] = {
 def followAssignedVar(conds: ListBuffer[Map[String, String]], assigned_var: AstNode,
   analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String]) : Boolean = {
 
-  println("Following assignment to: " + assigned_var)
+  println("Following assignment to: " + getNodeName(assigned_var) + " (" + assigned_var + ")")
 
   // First check if the assigned variable is actually an index of an array
   if (assigned_var.isCall) {
@@ -381,7 +412,7 @@ def followAssignedVar(conds: ListBuffer[Map[String, String]], assigned_var: AstN
                 mutable.Map("reason" -> "AssignedToField",
                   "type" -> member_type, "field" -> member.name))
 
-              if (member_type contains "string") {
+              if (member_type.contains("string")) {
                 addHaveToString(conds)
               }
               // No need to follow it since we deduced the type
@@ -418,32 +449,18 @@ def followAssignedVar(conds: ListBuffer[Map[String, String]], assigned_var: AstN
 
   }
 
-  // Get the all the ref edges. Make sure to cast them to lists such that
-  // functions such as `filter` work as expected
-  val refs = cpg.graph.edges.filter(_.isInstanceOf[Ref]).l
-
-  // Get the node that represents the local variable
-  val assigned_var_refs = refs.filter(e => {
-    (e.inNode.isInstanceOf[AstNode]) &&
-    (e.outNode.isInstanceOf[AstNode]) &&
-    (e.outNode.asInstanceOf[AstNode].id == assigned_var.id)
-  })
-  if (assigned_var_refs.length != 1) {
-    throw new Exception("Expected 1 assigned_var ref, found " + assigned_var_refs.length)
+  val local_var_node_l = assigned_var.out("REF").l
+  if (local_var_node_l.length != 1) {
+      throw new Exception("Expected 1 declaration for assigned_var, found " + local_var_node_l.length)
   }
-  val local_var_node = assigned_var_refs(0).inNode
+  val local_var_node = local_var_node_l.head
 
-  // Get all the other uses of the assigned-to variable and analyze them
-  val local_var_refs = refs.filter(e => {
-    (e.inNode.isInstanceOf[AstNode]) &&
-    (e.outNode.isInstanceOf[AstNode]) &&
-    (e.inNode.asInstanceOf[AstNode].id == local_var_node.id)
-  }).l
+  val all_uses = local_var_node.in("REF").map(_.asInstanceOf[AstNode])
 
   // Remove the use we started and the ones in different scope and analyze the rest
   // We check scope by checking if the id of the method containing the variable matches
   // with the rest of the uses
-  val var_uses = local_var_refs.map(n => n.outNode.asInstanceOf[AstNode])
+  val var_uses = all_uses
     .filter(_.id != assigned_var.id)
     .filter(n => getScopeId(n) == assigned_var.astParent.asInstanceOf[CallNode].method.id)
     .filter(n => {n.lineNumber.getOrElse(-1).asInstanceOf[Int] >= assigned_var.lineNumber.getOrElse(-1).asInstanceOf[Int]})
@@ -907,7 +924,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
                   conds += createCondition("Exact",
                     mutable.Map("reason" -> "FuncArg", "type" -> param_type, "function" -> fcall.name))
 
-                  if (param_type contains "string") {
+                  if (param_type.contains("string")) {
                     addHaveToString(conds)
                   }
 
@@ -996,7 +1013,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
               // Recursively collect evidence by following parameter use in the
               // called method
               for (method <- methods) {
-                // println("Checking " + method.name + " nargs: " + nargs + " param length: " + method.parameter.l.length)
+                println("Checking " + method.name + " nargs: " + nargs + " param length: " + method.parameter.l.length)
                 // Only do this if this method has enough parameters
                 if (method.parameter.l.length >= nargs) {
                   val param = method.parameter.index(arg_idx).l(0)
@@ -1010,7 +1027,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
                         "type" -> param_type,
                         "method" -> fcall.name))
 
-                    if (param_type contains "string") {
+                    if (param_type.contains("string")) {
                       addHaveToString(conds)
                     }
 
@@ -1040,7 +1057,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
       )
 
       // Check if we know the return type before collecting evidence from the call sites
-      if (return_type != "ANY") {
+      if (helpsWithTyping(return_type)) {
         conds += createCondition("Exact",
           mutable.Map("reason" -> "Return", "type" -> return_type, "methodName" -> method.name))
       } else if (!isBuiltIn(method)) {
@@ -1064,6 +1081,8 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
   val outFileWarnings = outFile + ".warnings"
   maxDepth = kBound
   importCpg(cpgFile)
+
+  var project_root = cpg.metaData.l.head.root
   // Names of deserialization APIs to look for
   var calls = cpg.call.name("unserialize") ++ cpg.call.name("maybe_unserialize") ++ cpg.call.name("deserialize")
 
@@ -1091,7 +1110,7 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
     extractConditions(conditions, call, analyzed_node_ids, 0, warnings)
 
     // Create and store an entry containing the inferred types
-    val entry = UnserEntry(call.file.name.l(0), call.lineNumber.getOrElse(-1), conditions.toSet)
+    val entry = UnserEntry(join_paths(project_root, call.file.name.head), call.lineNumber.getOrElse(-1), conditions.toSet)
 
     val conds_json: String = write(entry)
     collected_conditions += conds_json
@@ -1103,12 +1122,12 @@ def extractConditions(conds: ListBuffer[Map[String, String]], n: AstNode,
     }
 
   }
-  ("[" + collected_conditions.mkString(",") + "]") #> outFile
+  writeFile(outFile, "[" + collected_conditions.mkString(",") + "]")
 
   println("Warnings:")
   for (warn <- warnings.toSet) {
     println("\t" + warn)
   }
 
-  ("[" + warnings.mkString(",") + "]") #> outFileWarnings
+  writeFile(outFileWarnings, "[" + warnings.mkString(",") + "]")
 }

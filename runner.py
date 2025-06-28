@@ -91,10 +91,10 @@ class PHPAnalyzer:
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
             # Format: [(file, line)]
-            focus_lines = [("queue.php", 47)]
+            focus_lines = []
 
             # Run the Joern analysis
-            my_logger.info("Running joern analysis")
+            # my_logger.info("Running joern analysis")
             # Path to save the JOERN CPG graph for the project
             joe_out_graph = self.results_path / "JOEGRAPH"
 
@@ -154,8 +154,9 @@ class PHPAnalyzer:
             # - Produces files:
             #       joe_analyze.out
             #       joe_analyze.out.warnings
+
+            analysis_results_path = self.results_path.joinpath("joe_analyze.out")
             if do_analyze:
-                analysis_results_path = self.results_path.joinpath("joe_analyze.out")
                 joern_analyze_params = [
                     "joern",
                     "--script",
@@ -179,8 +180,9 @@ class PHPAnalyzer:
             #
             # - Produces file:
             #       availclass.json
+
+            avail_res_path = self.results_path.joinpath("availclass.json")
             if do_resolve_avail_classes:
-                avail_res_path = self.results_path.joinpath("availclass.json")
                 psr4_path = Path("tools", "helpers", "get_psr4_mappings.php")
                 joern_available_classes_params = [
                     "joern",
@@ -215,16 +217,8 @@ class PHPAnalyzer:
                 with analysis_results_path.open() as f:
                     evidence_entries = json.load(f)
 
-                # TODO: remove this after the fix inside availclass script
                 with avail_res_path.open() as f:
                     avail_classes_entries = json.load(f)
-                    for entry in avail_classes_entries:
-                        for k, i in entry.items():
-                            if k == "filename":
-                                my_p = Path(i)
-                                entry[k] = my_p.relative_to(
-                                    self.project_path
-                                ).as_posix()
 
                 with self.results_path.joinpath("availclass_fixed.json").open("w") as f:
                     f.write(json.dumps(avail_classes_entries, indent=True))
