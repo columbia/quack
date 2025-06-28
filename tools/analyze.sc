@@ -181,8 +181,8 @@ def getScopeId(n: AstNode) : Long = {
 }
 
 // Add the classes that have a __toString method to the evidence
-def addHaveToString(conds: mutable.Set[Map[String, String]]) = {
-    val have_to_string = cpg.method.name("__toString").typeDecl.name.mkString("|")
+def addHaveToString(conds: mutable.Set[Map[String, String]], methodCache: Map[String, List[Method]]) = {
+    val have_to_string = methodCache.getOrElse("__toString", List.empty).flatMap(_.typeDecl.name).mkString("|")
     conds += createCondition("Duck",
       mutable.Map("reason" -> "HasToString",
         "type" -> have_to_string))
@@ -190,14 +190,15 @@ def addHaveToString(conds: mutable.Set[Map[String, String]]) = {
 
 // Follow all uses for the given parameter in the method/function
 def collectParameterUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
-  parameter: MethodParameterIn, depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  parameter: MethodParameterIn, depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
   val parameter_uses = parameter.in("REF").map(_.asInstanceOf[AstNode]).filter(n => getScopeId(n) == parameter.method.id)
 
   // Iterate and collect evidence
   for (use <- parameter_uses) {
     println(use)
-    extractConditions(conds, use, analyzed, depth, warnings)
+    extractConditions(conds, use, analyzed, depth, warnings, methodCache, memberCache)
   }
 
   return true
@@ -206,7 +207,8 @@ def collectParameterUses(conds: mutable.Set[Map[String, String]], analyzed: muta
 
 // Collect uses of the parameter in a method
 def collectParameterUsesFromMethod(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
-  method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
   // We reached max depth, stop here
   if (depth == maxDepth) {
@@ -225,13 +227,14 @@ def collectParameterUsesFromMethod(conds: mutable.Set[Map[String, String]], anal
 
   println("Following parameter " + parameter + " use in method " + method.fullName)
 
-  collectParameterUses(conds, analyzed, parameter, depth, warnings)
+  collectParameterUses(conds, analyzed, parameter, depth, warnings, methodCache, memberCache)
 }
 
 
 // Collect uses of the parameter in a function
 def collectParameterUsesFromFunc(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
-  method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  method: Method, nargs: Int, argIdx: Int, depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
   // We reached max depth, stop here
   if (depth == maxDepth) {
@@ -250,7 +253,7 @@ def collectParameterUsesFromFunc(conds: mutable.Set[Map[String, String]], analyz
   // Get the parameter (+1 cause 0 is $this, doesn't exist in functions)
   val parameter = method.parameter.index(argIdx + 1).head
 
-  collectParameterUses(conds, analyzed, parameter, depth, warnings)
+  collectParameterUses(conds, analyzed, parameter, depth, warnings, methodCache, memberCache)
 
 }
 
@@ -273,7 +276,8 @@ def helpsWithTyping(type_str: String) : Boolean = {
 
 // Examine uses of the given class field in order to try to infer its type
 def collectFieldUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.Set[Long],
-  the_class: TypeDecl, member: Member, depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  the_class: TypeDecl, member: Member, depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
     println("Collecting field uses for field '" + member.name + "' of class '" + the_class.name + "'")
 
@@ -286,7 +290,7 @@ def collectFieldUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.
       .filter(x => (x.isIdentifier && x.asInstanceOf[Identifier].typeFullName == the_class.name)).l
 
     for (use <- field_uses) {
-      extractConditions(conds, use.astParent, analyzed, depth, warnings)
+      extractConditions(conds, use.astParent, analyzed, depth, warnings, methodCache, memberCache)
     }
 
     return true
@@ -336,7 +340,8 @@ def tryInferSliceType(index_access: CallNode) : Set[String] = {
 
 // Collect evidence from the given assigned deserialized variable
 def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: AstNode,
-  analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
   println("Following assignment to: " + getNodeName(assigned_var) + " (" + assigned_var + ")")
 
@@ -354,12 +359,12 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
             mutable.Map("arrayIdx" -> array_index.toString))
 
         // TODO: should we really follow each element?
-        followAssignedVar(conds, arg, analyzed, depth, warnings)
+        followAssignedVar(conds, arg, analyzed, depth, warnings, methodCache, memberCache)
       }
       return false
     } else if (call.methodFullName == "<operator>.doubleArrow") {
       // Get $value from $key => $value
-      return followAssignedVar(conds, call.argument.argumentIndex(2).head, analyzed, depth, warnings)
+      return followAssignedVar(conds, call.argument.argumentIndex(2).head, analyzed, depth, warnings, methodCache, memberCache)
     } else if (call.methodFullName == "<operator>.fieldAccess") {
       // Assigned to a field
       val field_access = assigned_var.asInstanceOf[CallNode]
@@ -385,10 +390,10 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
           )
 
         // Try to check if we know what the type of this property is before tainting it
-        val field_members_with_name = cpg.member.name(field_ident.canonicalName).l
+        val field_members_with_name = memberCache.getOrElse(field_ident.canonicalName, List.empty)
         if (fobj_type != "ANY" && !(fobj_type contains "|")) {
           // Use 'fullName' here to match namespaces as well
-          val classes_with_field = field_members_with_name.typeDecl.filter(_.fullName == fobj_type).l
+          val classes_with_field = field_members_with_name.flatMap(_.typeDecl).filter(_.fullName == fobj_type)
           if (classes_with_field.length == 1)  {
             val the_class = classes_with_field.head
             val member = the_class.member.name(field_ident.canonicalName).head
@@ -400,12 +405,12 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
                   "type" -> member_type, "field" -> member.name))
 
               if (member_type.contains("string")) {
-                addHaveToString(conds)
+                addHaveToString(conds, methodCache)
               }
               // No need to follow it since we deduced the type
               return false
             } else {
-              return collectFieldUses(conds, analyzed, the_class, member, depth, warnings)
+              return collectFieldUses(conds, analyzed, the_class, member, depth, warnings, methodCache, memberCache)
             }
           }
         }
@@ -420,7 +425,7 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
       } else {
         throw new Exception("Unknown type for field access!")
       }
-      return followAssignedVar(conds, fobject, analyzed, depth, warnings)
+      return followAssignedVar(conds, fobject, analyzed, depth, warnings, methodCache, memberCache)
     } else if (call.methodFullName == "<operator>.indexAccess") {
       // Assigned to array index
       val index_access = assigned_var.asInstanceOf[CallNode]
@@ -429,7 +434,7 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
       conds += createCondition("AssignedToArrayIdx",
         mutable.Map("arrayIdx" -> index_access.argument.argumentIndex(2).head.code,
           "array" -> array.code))
-      return followAssignedVar(conds, array, analyzed, depth, warnings)
+      return followAssignedVar(conds, array, analyzed, depth, warnings, methodCache, memberCache)
     } else {
       throw new Exception("Unknown call in assignment analysis: " + call.methodFullName + " (" + call.code + ")" + call.method.filename)
     }
@@ -454,7 +459,7 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
     .l
 
   for (use <- var_uses) {
-    extractConditions(conds, use, analyzed, depth, warnings)
+    extractConditions(conds, use, analyzed, depth, warnings, methodCache, memberCache)
   }
 
   true
@@ -493,7 +498,8 @@ def extractIteratorVariable(iterator_parent: AstNode) : AstNode = {
 // The main function that applies the typing rules on a given deserialized node
 // and collects type information
 def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
-  analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String]) : Boolean = {
+  analyzed: mutable.Set[Long], depth: Int, warnings: ListBuffer[String],
+  methodCache: Map[String, List[Method]], memberCache: Map[String, List[Member]]) : Boolean = {
 
   // We reached max depth, stop here
   if (depth == maxDepth) {
@@ -537,16 +543,16 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // Ignore error suppress prefixes
         case "<operator>.errorSuppress" => {
           println("Ignoring errorSuppress node")
-          return extractConditions(conds, parent, analyzed, depth, warnings)
+          return extractConditions(conds, parent, analyzed, depth, warnings, methodCache, memberCache)
         }
         case "<operator>.doubleArrow" => {
           // Part of a foreach, we should have processed it already
-          return extractConditions(conds, parent, analyzed, depth, warnings)
+          return extractConditions(conds, parent, analyzed, depth, warnings, methodCache, memberCache)
         }
         case "Iterator.next" => {
           // Part of an iterator, we are extracting the conditions from
           // Iterator.current
-          return extractConditions(conds, parent, analyzed, depth, warnings)
+          return extractConditions(conds, parent, analyzed, depth, warnings, methodCache, memberCache)
         }
         // Value is an array and is being indexed
         case "<operator>.indexAccess" => {
@@ -568,7 +574,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           val loop_value = extractIteratorVariable(loop_assign_call)
           // We essentially treat the iterated value as a new variable being reassigned
           // in the loop body
-          followAssignedVar(conds, loop_value, analyzed, depth, warnings)
+          followAssignedVar(conds, loop_value, analyzed, depth, warnings, methodCache, memberCache)
         }
         // Field of value is being accessed
         case "<operator>.fieldAccess" => {
@@ -589,8 +595,8 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               // FIXME maybe filter based on field type if we have it
               // Get the classes that have a field with this name
               val field_name = field_identifier.asInstanceOf[FieldIdentifier].canonicalName
-              val field_members = cpg.member.name(field_name)
-              val classes_with_field = field_members.typeDecl.name.mkString("|")
+              val field_members = memberCache.getOrElse(field_name, List.empty)
+              val classes_with_field = field_members.flatMap(_.typeDecl.name).mkString("|")
 
               conds += createCondition("Duck",
                 mutable.Map("reason" -> "HasField",
@@ -627,7 +633,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               "reason" -> "Cast"))
 
               if (casted_type == "string") {
-                addHaveToString(conds)
+                addHaveToString(conds, methodCache)
               }
 
           // No need to collect anything else about this since we got the exact
@@ -705,7 +711,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
           // Being assigned with another variable
           if (assigned_var.id != n.id) {
-            followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
+            followAssignedVar(conds, assigned_var, analyzed, depth, warnings, methodCache, memberCache)
           }
         }
         // Bitwise assignment (e.g. &=, |=)
@@ -722,7 +728,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
           // Being assigned with another variable
           if (assigned_var.id != n.id) {
-            followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
+            followAssignedVar(conds, assigned_var, analyzed, depth, warnings, methodCache, memberCache)
           }
         }
         // Logical operation
@@ -740,7 +746,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           // Value being pushed in the array
           if (arg_idx == 1)  {
             val array = call.argument.argumentIndex(1).head
-            followAssignedVar(conds, array, analyzed, depth, warnings)
+            followAssignedVar(conds, array, analyzed, depth, warnings, methodCache, memberCache)
           }
         }
         // Part of a conditional (e.g., ternary, elvis)
@@ -767,7 +773,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 mutable.Map("reason" -> "Ternary", "type" -> other_arg_type))
 
                 if (other_arg_type == "string") {
-                  addHaveToString(conds)
+                  addHaveToString(conds, methodCache)
                 }
             }
           }
@@ -778,7 +784,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // Part of a string operation
         case string_op @ ("<operator>.concat" | "<operator>.assignmentConcat") => {
 
-          addHaveToString(conds)
+          addHaveToString(conds, methodCache)
 
           conds += createCondition("Exact",
             mutable.Map("type" -> "string", "reason" -> "StringOp"))
@@ -787,7 +793,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
             // Being concatenated to another variable
             if (assigned_var.id != n.id) {
-              followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
+              followAssignedVar(conds, assigned_var, analyzed, depth, warnings, methodCache, memberCache)
             }
           }
         }
@@ -801,7 +807,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> call.typeFullName, "reason" -> "Scalar"))
 
           if (call.typeFullName == "string") {
-            addHaveToString(conds)
+            addHaveToString(conds, methodCache)
           }
         }
         // Used in 'new' as a dynamic class name (new $var())
@@ -815,7 +821,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
            * more conditions */
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
           if (assigned_var.id != n.id) {
-            followAssignedVar(conds, assigned_var, analyzed, depth, warnings)
+            followAssignedVar(conds, assigned_var, analyzed, depth, warnings, methodCache, memberCache)
           } else {
             // Don't follow re-assignments
             println("Node " + n + " is being reassigned, ignoring")
@@ -837,7 +843,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
 
             if (getNodeType(callback_name_literal) == "string") {
               val callback_name = callback_name_literal.code.replace("\"", "")
-              val callback_func_l = cpg.method.name(callback_name).l
+              val callback_func_l = methodCache.getOrElse(callback_name, List.empty)
 
               if (callback_func_l.length > 0) {
                 val callback_func = callback_func_l.head.asInstanceOf[Method]
@@ -855,7 +861,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                       callback_func.name))
 
                     if (arg_type contains "string") {
-                      addHaveToString(conds)
+                      addHaveToString(conds, methodCache)
                     }
                   }
                 }
@@ -885,7 +891,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           val fcall = parent.asInstanceOf[CallNode]
           val nargs = fcall.argument.l.length
           // Functions with this name
-          var methods = cpg.method.name(fcall.name).l
+          var methods = methodCache.getOrElse(fcall.name, List.empty)
           val arg_idx = getArgIdx(fcall, n_cast)
 
           if (fcall.dispatchType == "STATIC_DISPATCH") {
@@ -912,11 +918,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                     mutable.Map("reason" -> "FuncArg", "type" -> param_type, "function" -> fcall.name))
 
                   if (param_type.contains("string")) {
-                    addHaveToString(conds)
+                    addHaveToString(conds, methodCache)
                   }
 
                 } else if (!isBuiltIn(method)) {
-                  collectParameterUsesFromFunc(conds, analyzed, method, nargs, arg_idx, depth + 1, warnings)
+                  collectParameterUsesFromFunc(conds, analyzed, method, nargs, arg_idx, depth + 1, warnings, methodCache, memberCache)
                 }
               } else {
                 println("More arguments than parameters in function " + method.name + " " + method.astParentFullName)
@@ -930,8 +936,8 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 mutable.Map("methodName" -> fcall.name,
                   "methodFullName" -> fcall.methodFullName))
               // FIXME maybe filter based on number of arguments
-              val methods = cpg.method.name(fcall.name).filter(_.astParentFullName != "<global>")
-              val types = methods.typeDecl.name.mkString("|")
+              val methods = methodCache.getOrElse(fcall.name, List.empty).filter(_.astParentFullName != "<global>")
+              val types = methods.flatMap(_.typeDecl.name).mkString("|")
 
               conds += createCondition("Duck",
                 mutable.Map("reason" -> "HasMethod",
@@ -968,10 +974,10 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                     if (field.isFieldIdentifier) {
 
                       val field_ident = field.asInstanceOf[FieldIdentifier]
-                      val field_members_with_name = cpg.member.name(field_ident.canonicalName).l
+                      val field_members_with_name = memberCache.getOrElse(field_ident.canonicalName, List.empty)
                       if (fobj_type != "ANY" && !(fobj_type contains "|")) {
                         // Use 'fullName' here to match namespaces as well
-                        val classes_with_field = field_members_with_name.typeDecl.filter(_.fullName == fobj_type).l
+                        val classes_with_field = field_members_with_name.flatMap(_.typeDecl).filter(_.fullName == fobj_type)
                         if (classes_with_field.length == 1)  {
                           val the_class = classes_with_field.head
                           val member = the_class.member.name(field_ident.canonicalName).head
@@ -1015,14 +1021,14 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                         "method" -> fcall.name))
 
                     if (param_type.contains("string")) {
-                      addHaveToString(conds)
+                      addHaveToString(conds, methodCache)
                     }
 
                   } else if (!isBuiltIn(method)) {
                     // FIXME we should always know the types for built-ins, so this check
                     // might not be needed
                     // argument length - 1 to account for object
-                    collectParameterUsesFromMethod(conds, analyzed, method, nargs, arg_idx, depth + 1, warnings)
+                    collectParameterUsesFromMethod(conds, analyzed, method, nargs, arg_idx, depth + 1, warnings, methodCache, memberCache)
                   }
                 } else {
                   println("More arguments than parameters in method " + method.name + " " + method.typeDecl.name)
@@ -1052,14 +1058,14 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // the parent method
         val calls_to_parent_method = cpg.call.name(method.name.replace("\\", "\\\\"))
         for (call <- calls_to_parent_method) {
-          extractConditions(conds, call, analyzed, depth + 1, warnings)
+          extractConditions(conds, call, analyzed, depth + 1, warnings, methodCache, memberCache)
         }
       }
     } else {
       throw new Exception("Unknown node: " + parent)
     }
 
-    return extractConditions(conds, parent, analyzed, depth, warnings)
+    return extractConditions(conds, parent, analyzed, depth, warnings, methodCache, memberCache)
 
 }
 
@@ -1068,6 +1074,13 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
   val outFileWarnings = outFile + ".warnings"
   maxDepth = kBound
   importCpg(cpgFile)
+
+  println("Building CPG query caches for performance...")
+  // Create a map from a method's name to all Method nodes with that name
+  val methodCache: Map[String, List[Method]] = cpg.method.toList.groupBy(_.name)
+  // Create a map from a member's name to all Member nodes with that name
+  val memberCache: Map[String, List[Member]] = cpg.member.toList.groupBy(_.name)
+  println("Caches built.")
 
   var project_root = cpg.metaData.l.head.root
   // Names of deserialization APIs to look for
@@ -1094,7 +1107,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
     println(call.file.name.head + ":" + call.lineNumber.getOrElse(-1))
     var conditions = mutable.Set[Map[String, String]]()
     // Call the main function that implements the type inference algorithm
-    extractConditions(conditions, call, analyzed_node_ids, 0, warnings)
+    extractConditions(conditions, call, analyzed_node_ids, 0, warnings, methodCache, memberCache)
 
     // Create and store an entry containing the inferred types
     val entry = UnserEntry(join_paths(project_root, call.file.name.head), call.lineNumber.getOrElse(-1), conditions.toSet)
