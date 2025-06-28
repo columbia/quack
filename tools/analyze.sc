@@ -151,7 +151,7 @@ def getNodeType(n: AstNode) : String = {
 
 // Get the node that represents the assigned variable
 def getAssignedVar(assignment: CallNode) : AstNode = {
-  return assignment.argument.argumentIndex(1).l(0)
+  return assignment.argument.argumentIndex(1).head
 }
 
 // Check if method is builtin
@@ -233,7 +233,7 @@ def collectParameterUsesFromMethod(conds: mutable.Set[Map[String, String]], anal
   }
 
   // Get the parameter
-  val parameter = method.parameter.index(argIdx).l(0)
+  val parameter = method.parameter.index(argIdx).head
 
   println("Following parameter " + parameter + " use in method " + method.fullName)
 
@@ -260,7 +260,7 @@ def collectParameterUsesFromFunc(conds: mutable.Set[Map[String, String]], analyz
   println("Following parameter use in function " + method.fullName)
 
   // Get the parameter (+1 cause 0 is $this, doesn't exist in functions)
-  val parameter = method.parameter.index(argIdx + 1).l(0)
+  val parameter = method.parameter.index(argIdx + 1).head
 
   collectParameterUses(conds, analyzed, parameter, depth, warnings)
 
@@ -294,7 +294,7 @@ def collectFieldUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.
     // filter only the ones that are of type 'the_class'
     val field_uses = cpg.fieldIdentifier.canonicalName(member.name).astParent
       .filter(x => (x.isInstanceOf[CallNode] && x.asInstanceOf[CallNode].name == "<operator>.fieldAccess"))
-      .map(_.asInstanceOf[CallNode]).map(_.argument.l(0))
+      .map(_.asInstanceOf[CallNode]).map(_.argument.head)
       .filter(x => (x.isIdentifier && x.asInstanceOf[Identifier].typeFullName == the_class.name)).l
 
     for (use <- field_uses) {
@@ -307,7 +307,7 @@ def collectFieldUses(conds: mutable.Set[Map[String, String]], analyzed: mutable.
 // Try to infer the type of an array slice
 def tryInferSliceType(index_access: CallNode) : Set[String] = {
 
-  val arg0 = index_access.argument.l(0)
+  val arg0 = index_access.argument.head
   val arg1 = index_access.argument.l(1)
 
   if (arg0.isIdentifier && arg1.isLiteral) {
@@ -371,11 +371,11 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
       return false
     } else if (call.methodFullName == "<operator>.doubleArrow") {
       // Get $value from $key => $value
-      return followAssignedVar(conds, call.argument.argumentIndex(2).l(0), analyzed, depth, warnings)
+      return followAssignedVar(conds, call.argument.argumentIndex(2).head, analyzed, depth, warnings)
     } else if (call.methodFullName == "<operator>.fieldAccess") {
       // Assigned to a field
       val field_access = assigned_var.asInstanceOf[CallNode]
-      val fobject = field_access.argument.argumentIndex(1).l(0)
+      val fobject = field_access.argument.argumentIndex(1).head
 
       val fobj_type = getNodeType(fobject)
       if (!fobject.isIdentifier) {
@@ -384,7 +384,7 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
         return false;
       }
       val object_name = fobject.asInstanceOf[Identifier].name
-      val field = field_access.argument.argumentIndex(2).l(0)
+      val field = field_access.argument.argumentIndex(2).head
 
       if (field.isFieldIdentifier) {
 
@@ -402,8 +402,8 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
           // Use 'fullName' here to match namespaces as well
           val classes_with_field = field_members_with_name.typeDecl.filter(_.fullName == fobj_type).l
           if (classes_with_field.length == 1)  {
-            val the_class = classes_with_field.l(0)
-            val member = the_class.member.name(field_ident.canonicalName).l(0)
+            val the_class = classes_with_field.head
+            val member = the_class.member.name(field_ident.canonicalName).head
             val member_type = getNodeType(member)
             if (helpsWithTyping(member_type)) {
 
@@ -436,10 +436,10 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
     } else if (call.methodFullName == "<operator>.indexAccess") {
       // Assigned to array index
       val index_access = assigned_var.asInstanceOf[CallNode]
-      val array = index_access.argument.argumentIndex(1).l(0)
+      val array = index_access.argument.argumentIndex(1).head
       // FIXME try to figure out if this is a literal
       conds += createCondition("AssignedToArrayIdx",
-        mutable.Map("arrayIdx" -> index_access.argument.argumentIndex(2).l(0).code,
+        mutable.Map("arrayIdx" -> index_access.argument.argumentIndex(2).head.code,
           "array" -> array.code))
       return followAssignedVar(conds, array, analyzed, depth, warnings)
     } else {
@@ -492,11 +492,11 @@ def extractIteratorVariable(iterator_parent: AstNode) : AstNode = {
       + iterator_parent.asInstanceOf[CallNode].methodFullName)
   }
 
-  var loop_value = val_assignment.asInstanceOf[CallNode].argument.argumentIndex(1).l(0)
+  var loop_value = val_assignment.asInstanceOf[CallNode].argument.argumentIndex(1).head
   // Is ($key => $value), just get $value
   if (loop_value.isInstanceOf[CallNode] &&
     loop_value.asInstanceOf[CallNode].methodFullName == "<operator>.doubleArrow") {
-      loop_value = loop_value.asInstanceOf[CallNode].argument.argumentIndex(2).l(0)
+      loop_value = loop_value.asInstanceOf[CallNode].argument.argumentIndex(2).head
   }
 
     return loop_value
@@ -564,7 +564,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         case "<operator>.indexAccess" => {
           val index_access = parent.asInstanceOf[CallNode]
           conds += createCondition("ArrayRef",
-            mutable.Map("arrayIdx" -> index_access.argument.argumentIndex(2).l(0).code))
+            mutable.Map("arrayIdx" -> index_access.argument.argumentIndex(2).head.code))
         }
         // Value was passed by reference (or assigned as a reference)
         case "<operator>.addressOf" => {
@@ -596,7 +596,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             if (arg_idx != 1) {
               throw new Exception("Field access but argument isn't the one being accessed or the field name! (" + field_access.code + ")")
             }
-            val field_identifier = field_access.argument.argumentIndex(2).l(0)
+            val field_identifier = field_access.argument.argumentIndex(2).head
             if (field_identifier.isFieldIdentifier) {
               // FIXME maybe filter based on field type if we have it
               // Get the classes that have a field with this name
@@ -656,7 +656,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             //FIXME maybe add different type evidence for identical vs the rest
           val arg_idx = getArgIdx(call, n_cast)
           val other_idx = if (arg_idx == 0) 2 else 1
-          val other_arg = call.argument.argumentIndex(other_idx).l(0)
+          val other_arg = call.argument.argumentIndex(other_idx).head
           if (other_arg.isLiteral) {
             conds += createCondition("Comparison",
               mutable.Map("comparisonType" -> "literal",
@@ -751,7 +751,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           val arg_idx = getArgIdx(call, n_cast)
           // Value being pushed in the array
           if (arg_idx == 1)  {
-            val array = call.argument.argumentIndex(1).l(0)
+            val array = call.argument.argumentIndex(1).head
             followAssignedVar(conds, array, analyzed, depth, warnings)
           }
         }
@@ -771,7 +771,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               if (arg_idx == 1) 3 else 2
             }
 
-            val other_arg = call.argument.argumentIndex(other_idx).l(0)
+            val other_arg = call.argument.argumentIndex(other_idx).head
             val other_arg_type = getNodeType(other_arg)
             if (other_arg_type != "ANY" && other_arg_type != "deserialize.<returnValue>") {
 
@@ -838,7 +838,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         case callbacks @ ("array_map" | "call_user_func_array") => {
           val fcall = parent.asInstanceOf[CallNode]
           // FIXME for now we assume callback is the first argument
-          val callback_name_node = fcall.argument.argumentIndex(1).l(0)
+          val callback_name_node = fcall.argument.argumentIndex(1).head
           val arg_idx = getArgIdx(fcall, n_cast)
 
           // Treat the callback as a function call if we know its name
@@ -852,13 +852,13 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               val callback_func_l = cpg.method.name(callback_name).l
 
               if (callback_func_l.length > 0) {
-                val callback_func = callback_func_l.l(0).asInstanceOf[Method]
+                val callback_func = callback_func_l.head.asInstanceOf[Method]
                 // Normally we would have to -1 the arg index, but we would have
                 // add it again because joern indexing, so just keep what we got,
                 // it's correct
                 val callback_arg_l = callback_func.parameter.index(arg_idx).l
                 if (callback_arg_l.length > 0) {
-                  val callback_arg = callback_arg_l.l(0)
+                  val callback_arg = callback_arg_l.head
                   val arg_type = getNodeType(callback_arg)
                   if (helpsWithTyping(arg_type)) {
 
@@ -884,7 +884,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         }
         // Passed to instanceOf
         case "<operator>.instanceOf" => {
-          val class_name = call.argument.argumentIndex(2).l(0).asInstanceOf[Identifier].name
+          val class_name = call.argument.argumentIndex(2).head.asInstanceOf[Identifier].name
           conds += createCondition("InstanceOf",
             mutable.Map("type" -> class_name))
         }
@@ -914,7 +914,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 val param_node = method.parameter.index(arg_idx + 1).l
                 var param_type = "ANY"
                 if (param_node.length > 0) {
-                  val param = param_node.l(0)
+                  val param = param_node.head
                   param_type = getNodeType(param)
                 }
 
@@ -956,7 +956,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               if (fobject.isIdentifier) {
                 val fobj_type = fobject.asInstanceOf[Identifier].typeFullName
                 if (fobj_type != "ANY") {
-                  methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (x.typeDecl.name.l(0) == fobj_type)})
+                  methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (x.typeDecl.name.head == fobj_type)})
                 }
                 if (fobj_type.startsWith("$") && fcall.name == "__construct") {
                   // Flows into a dynamic constructor which we can't follow,
@@ -971,11 +971,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 // Check if it's a field with known type too
                 val call = fobject.asInstanceOf[CallNode]
                 if (call.methodFullName == "<operator>.fieldAccess") {
-                  val fobject = call.argument.argumentIndex(1).l(0)
+                  val fobject = call.argument.argumentIndex(1).head
                   val fobj_type = getNodeType(fobject)
 
                   if (fobject.isIdentifier) {
-                    val field = call.argument.argumentIndex(2).l(0)
+                    val field = call.argument.argumentIndex(2).head
 
                     if (field.isFieldIdentifier) {
 
@@ -985,11 +985,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                         // Use 'fullName' here to match namespaces as well
                         val classes_with_field = field_members_with_name.typeDecl.filter(_.fullName == fobj_type).l
                         if (classes_with_field.length == 1)  {
-                          val the_class = classes_with_field.l(0)
-                          val member = the_class.member.name(field_ident.canonicalName).l(0)
+                          val the_class = classes_with_field.head
+                          val member = the_class.member.name(field_ident.canonicalName).head
                           val member_type = getNodeType(member)
                           if (member_type != "ANY") {
-                            methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (x.typeDecl.name.l(0) == member_type)})
+                            methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (x.typeDecl.name.head == member_type)})
 
                             // println("Filtered methods: "+ methods)
                           }
@@ -1000,7 +1000,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 }
                 else if (call.methodFullName == "<operator>.indexAccess") {
                   val inferred_types = tryInferSliceType(call)
-                  methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (inferred_types.contains(x.typeDecl.name.l(0)))})
+                  methods = methods.filter(x => {(x.typeDecl.l.length != 0) && (inferred_types.contains(x.typeDecl.name.head))})
                 }
               }
               // The value is the argument to the method call
@@ -1015,7 +1015,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 println("Checking " + method.name + " nargs: " + nargs + " param length: " + method.parameter.l.length)
                 // Only do this if this method has enough parameters
                 if (method.parameter.l.length >= nargs) {
-                  val param = method.parameter.index(arg_idx).l(0)
+                  val param = method.parameter.index(arg_idx).head
                   val param_type = getNodeType(param)
 
                   // Check if we know the parameter type before collecting evidence from within the method
@@ -1092,7 +1092,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
   }
 
   // Remove calls in the dependencies
-  calls = calls.filter(!_.file.name.l(0).startsWith("vendor/"))
+  calls = calls.filter(!_.file.name.head.startsWith("vendor/"))
 
   // We save all the collected evidence in here
   var collected_conditions = new ListBuffer[String]()
@@ -1103,7 +1103,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
 
   // Iterate through each deserialization call and collect evidence
   for (call <- calls) {
-    println(call.file.name.l(0) + ":" + call.lineNumber.getOrElse(-1))
+    println(call.file.name.head + ":" + call.lineNumber.getOrElse(-1))
     var conditions = mutable.Set[Map[String, String]]()
     // Call the main function that implements the type inference algorithm
     extractConditions(conditions, call, analyzed_node_ids, 0, warnings)
