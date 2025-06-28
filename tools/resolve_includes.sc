@@ -392,7 +392,8 @@ def resolve_avail_classes(
   project_root = cpg.metaData.l.head.root
   // Keep queries as Traversals to materialize as late as possible
   val include_directives_traversal = (cpg.call.methodFullName("include") ++ cpg.call.methodFullName("include_once") ++ cpg.call.methodFullName("require") ++ cpg.call.methodFullName("require_once"))
-  val all_classes_traversal = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>")
+  // val all_classes_traversal = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>")
+  val all_classes_traversal = cpg.typeDecl.filterNot(_.name == "<global>").filterNot(_.fullName.endsWith("<metaclass>"))
 
   val project_files = cpg.file.l.filter(_.name != "<unknown>").map(x => join_paths(project_root, x.name))
 
@@ -499,7 +500,7 @@ def resolve_avail_classes(
   val avail_classes_json: String = write(avail_classes)
 
   writeFile(outFile, avail_classes_json)
-  println(avail_classes_json)
+  // println(avail_classes_json)
 
   writeFile(outFileWarnings, "[" + warnings.mkString(",") + "]")
   writeFile(outFileErrors, "[" + errors.mkString(",") + "]")
