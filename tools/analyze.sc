@@ -104,6 +104,22 @@ var built_in_log = "/processed/builtins.txt"
 
 case class UnserEntry(filename: String, lineNumber: Integer, conditions: Set[Map[String, String]]) derives ReadWriter
 
+def getDefId(use: AstNode): String = {
+
+  if (use.isIdentifier) {
+    val declarationNodeTraversal = use.asInstanceOf[Identifier].out("REF")
+    val declarationNodeOption = declarationNodeTraversal.headOption
+
+    if (declarationNodeOption.isDefined) {
+        val defNode = declarationNodeOption.get
+        return defNode.id.toString
+    }
+
+  }
+
+  return use.id.toString
+}
+
 def getNodeName(n: AstNode): String = {
   n match {
     case id: Identifier => id.name
@@ -398,16 +414,13 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
 
         // Try to check if we know what the type of this property is before tainting it
         val field_members_with_name = memberCache.getOrElse(field_ident.canonicalName, List.empty)
-        println("Fobj type " + fobj_type)
         if (fobj_type != "ANY" && !(fobj_type.contains("|"))) {
           // Use 'fullName' here to match namespaces as well
           val classes_with_field = field_members_with_name.flatMap(_.typeDecl).filter(_.fullName == fobj_type)
           if (classes_with_field.length == 1)  {
             val the_class = classes_with_field.head
-            println("The class" + the_class)
             val member = the_class.member.name(field_ident.canonicalName).head
             val member_type = getNodeType(member)
-            println("Member type " + member_type)
             if (helpsWithTyping(member_type)) {
 
               conds += createCondition("Duck",
@@ -415,7 +428,7 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
                   "reason" -> "AssignedToField",
                   "type" -> member_type,
                   "field" -> member.name,
-                  "nodeId" -> assigned_var.astParent.id.toString
+                  "nodeId" -> getDefId(assigned_var)
                   ))
 
               if (member_type.contains("string")) {
@@ -617,7 +630,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   "reason" -> "HasField",
                   "type" -> classes_with_field,
                   "field" -> field_name,
-                  "nodeId" -> call.astParent.id.toString
+                  "nodeId" -> getDefId(n)
                   ))
 
               conds += createCondition("FieldAccess",
@@ -636,7 +649,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   "reason" -> "DynamicCall",
                   "type" -> "ANY",
                   "call" -> call.name,
-                  "nodeId" -> call.astParent.id.toString)
+                  "nodeId" -> getDefId(n))
                 )
               return false // No need to collect anything else about this
             }
@@ -648,11 +661,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // Value is being cast to a type
         case "<operator>.cast" => {
           val casted_type = call.argument(1).asInstanceOf[TypeRef].typeFullName
+          val casted_obj = call.argument(2)
           conds += createCondition("Exact",
             mutable.Map(
               "type" -> casted_type,
               "reason" -> "Cast",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
               if (casted_type == "string") {
@@ -708,7 +722,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "reason" -> "Arithmetic",
               "type" -> "numeric",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
         }
@@ -724,7 +738,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "reason" -> "Arithmetic",
               "type" -> "numeric",
-              "nodId" -> call.astParent.id.toString
+              "nodId" -> getDefId(n)
               ))
         }
         // Arithmetic assignment (e.g. +=, -=)
@@ -740,7 +754,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "reason" -> "Arithmetic",
               "type" -> "numeric",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
@@ -761,7 +775,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "reason" -> "Arithmetic",
               "type" -> "numeric",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
@@ -812,7 +826,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 mutable.Map(
                   "reason" -> "Ternary",
                   "type" -> other_arg_type,
-                  "nodeId" -> call.astParent.id.toString
+                  "nodeId" -> getDefId(n)
                   ))
 
                 if (other_arg_type == "string") {
@@ -833,7 +847,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "type" -> "string",
               "reason" -> "StringOp",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
           if (call.methodFullName == "<operator>.assignmentConcat") {
@@ -854,7 +868,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map(
               "type" -> call.typeFullName,
               "reason" -> "Scalar",
-              "nodeId" -> call.astParent.id.toString
+              "nodeId" -> getDefId(n)
               ))
 
           if (call.typeFullName == "string") {
@@ -933,7 +947,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                       "reason" -> "FuncArg",
                       "type" -> arg_type,
                       "function" -> callback_func.name,
-                      "nodeId" -> call.astParent.id.toString
+                      "nodeId" -> getDefId(n)
                     ))
 
                     if (arg_type contains "string") {
@@ -951,7 +965,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 "reason" -> "DynamicCall",
                 "type" -> "ANY",
                 "call" -> call.name,
-                "nodeId" -> call.astParent.id.toString
+                "nodeId" -> getDefId(n)
                 ))
           }
 
@@ -999,7 +1013,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                       "reason" -> "FuncArg",
                       "type" -> param_type,
                       "function" -> fcall.name,
-                      "nodeId" -> call.astParent.id.toString
+                      "nodeId" -> getDefId(n)
                       ))
 
                   if (param_type.contains("string")) {
@@ -1029,7 +1043,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   "reason" -> "HasMethod",
                   "type" -> types,
                   "method" -> fcall.name,
-                  "nodeId" -> fcall.astParent.id.toString
+                  "nodeId" -> getDefId(n)
                   ))
 
             } else {
@@ -1048,7 +1062,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                     mutable.Map("reason" -> "DynamicCall",
                       "type" -> "ANY",
                       "call" -> (fobj_type + "->__construct"),
-                      "nodeId" -> fcall.astParent.id.toString
+                      "nodeId" -> getDefId(n)
                       ))
 
                   return false
@@ -1112,7 +1126,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                         "reason" -> "MethodArg",
                         "type" -> param_type,
                         "method" -> fcall.name,
-                        "nodeId" -> fcall.astParent.id.toString
+                        "nodeId" -> getDefId(n)
                         ))
 
                     if (param_type.contains("string")) {
@@ -1151,7 +1165,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             "reason" -> "Return",
             "type" -> return_type,
             "methodName" -> method.name,
-            "nodeId" -> method.astParent.id.toString
+            "nodeId" -> getDefId(n)
             ))
       } else if (!isBuiltIn(method)) {
         // Recurse backwards to collect more evidence from the call sites of
