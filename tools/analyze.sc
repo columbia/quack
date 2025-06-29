@@ -110,6 +110,7 @@ def getNodeName(n: AstNode): String = {
     case method: Method => method.name
     case param: MethodParameterIn => param.name
     case ret: MethodReturn => ret.typeFullName // Returns don't have a name, type is descriptive
+    case ret: Return => ret.code
     case local: Local => local.name
     case member: Member => member.name
     case typeDecl: TypeDecl => typeDecl.name
@@ -197,7 +198,7 @@ def collectParameterUses(conds: mutable.Set[Map[String, String]], analyzed: muta
 
   // Iterate and collect evidence
   for (use <- parameter_uses) {
-    println(use)
+    // println(use)
     extractConditions(conds, use, analyzed, depth, warnings, methodCache, memberCache)
   }
 
@@ -516,7 +517,7 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
   }
 
   println()
-  println("Extracting conditions for node: " + n)
+  println("Extracting conditions for node: " + getNodeName(n) + " (" + n + ")")
 
   // Cast the node to its specific class so that we can use certain properties
   // that don't exist in AstNode
@@ -821,8 +822,8 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           /* Unserialized value is assigned to a variable, follow it to collect
            * more conditions */
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
+          // New representation of list()
           if (assigned_var.isIdentifier && assigned_var.asInstanceOf[Identifier].name.contains("@tmp-")) {
-              println("Got it")
               val temp_identifier = assigned_var.asInstanceOf[Identifier]
               val varName = temp_identifier.name
               val scopeId = getScopeId(temp_identifier)
