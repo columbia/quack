@@ -202,9 +202,28 @@ def get_include_string(n: AstNode) : String = {
       }
     }
   } else if (n.isIdentifier) {
-    // XXX: Maybe try to resolve its value first if it's in the same scope
-    logger.debug("Unknown node: " + n)
-    return UNKNOWN_NODE
+      // XXX: Maybe try to resolve its value first if it's in the same scope
+      logger.debug("Unknown node: " + n)
+      logger.debug("trying to resolve value by finding where it is defined")
+      val identifier = n.asInstanceOf[Identifier]
+      /* The argument is a variable identifier. In this case, we find where the
+       * variable is assigned by searching the containing method for 
+       * assignment statements where the lhs matches the variable name.
+       */
+      val assignments_rhs = identifier
+        .method
+        .call.where(_.name("<operator>.assignment"))
+        .where(_.argument.argumentIndex(1).isIdentifier.name(identifier.name))
+        .argument.argumentIndex(2)
+        .l
+
+      assignments_rhs.length match {
+        case 0 => return UNKNOWN_NODE
+        case 1 => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+        /* This case ignores if there are multiple assignments to the variable in this function.
+         * TODO: try to take the assignment immediately prior to the variable use. */
+        case _ => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+      }
   } else {
     throw new Exception("Unknown type for include argument: " + n)
   }
