@@ -71,6 +71,7 @@
  * - ByRef -- was passed by reference or assigned by reference
  */
 
+import scala.io.Source
 import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.ArraySeq
@@ -1093,11 +1094,13 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
 
 }
 
-@main def exec(cpgFile: String, outFile: String, kBound: Int = 3, focus_lines: String = "") = {
+@main def exec(projectPath: String, outFile: String, kBound: Int = 3, focus_lines: String = "") = {
+
+  val projectName = Paths.get(projectPath).getFileName().toString()
+  open(projectName)
 
   val outFileWarnings = outFile + ".warnings"
   maxDepth = kBound
-  importCpg(cpgFile)
 
   println("Building CPG query caches for performance...")
   // Create a map from a method's name to all Method nodes with that name
