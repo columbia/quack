@@ -106,7 +106,7 @@ def try_resolve_const(n: CallNode) : String =  {
     return UNKNOWN_NODE
   } else if (definitions.length == 1) {
     logger.info("Found definition for constant " + n.code)
-    val const_val = get_include_string(definitions.l(0).argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
+    val const_val = get_include_string(definitions.head.argument.argumentIndex(2).head.asInstanceOf[AstNode])
     return const_val
   } else {
     logger.warning("Multiple definitions found for " + n.code)
@@ -118,6 +118,7 @@ def try_resolve_const(n: CallNode) : String =  {
 def join_paths(p1: String, p2: String) : String = {
     return Paths.get(p1, p2).normalize().toString()
 }
+
 
 // Check if the provided includes for a file contain a file with an unhandled autoloader
 def includes_unhandled_autoloader(includes: mutable.ListBuffer[String]) : Boolean = {
@@ -133,7 +134,7 @@ def includes_unhandled_autoloader(includes: mutable.ListBuffer[String]) : Boolea
 // Resolve a magic const
 def resolve_magic_const(n: CallNode) : String = {
   logger.debug("Resolving magic const " + n.code)
-  val filename = n.file.name.l(0)
+  val filename = n.file.name.head
   n.code match  {
     case "__DIR__" => {
       val file_path = join_paths(project_root, filename)
@@ -175,9 +176,10 @@ def get_include_string(n: AstNode) : String = {
     val call = n.asInstanceOf[CallNode]
     call.methodFullName match {
       case "<operator>.concat" => {
-        val arg1 = get_include_string(call.argument.argumentIndex(1).l(0).asInstanceOf[AstNode])
-        val arg2 = get_include_string(call.argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
-        return Paths.get(arg1, arg2).normalize().toString()
+        val arg1 = get_include_string(call.argument.argumentIndex(1).head.asInstanceOf[AstNode])
+        val arg2 = get_include_string(call.argument.argumentIndex(2).head.asInstanceOf[AstNode])
+        // return Paths.get(arg1, arg2).normalize().toString()
+        return arg1 + arg2
       }
       case "<operator>.fieldAccess" => {
         if (is_magic_const(call)) {
@@ -194,7 +196,7 @@ def get_include_string(n: AstNode) : String = {
         if (is_builtin(call)) {
           return resolve_builtin(call)
         } else {
-          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.l(0) + ":" + call.lineNumber.getOrElse(-1))
+          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.head + ":" + call.lineNumber.getOrElse(-1))
           return UNKNOWN_NODE
         }
       }
@@ -340,7 +342,7 @@ def resolve_avail_classes(
           focus_entries.contains(x.method.filename + ":" + x.lineNumber.getOrElse(-1).toString))
     }
     // Group calls by filename. Materialize here as groupBy needs a collection.
-    val unser_calls_grouped = unser_calls_traversal.l.groupBy(_.file.name.l(0))
+    val unser_calls_grouped = unser_calls_traversal.l.groupBy(_.file.name.head)
 
     var avail_classes_entries = mutable.ListBuffer[AvailClassesEntry]()
 
