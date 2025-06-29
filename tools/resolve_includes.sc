@@ -401,9 +401,10 @@ def resolve_avail_classes(
     avail_classes_entries.toList
 }
 
-@main def exec(cpgFile: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
+@main def exec(projectPath: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
 
-  importCpg(cpgFile)
+  val projectName = Paths.get(projectPath).getFileName().toString()
+  open(projectName)
 
   val outFileWarnings = outFile + ".warnings"
   val outFileErrors = outFile + ".errors"

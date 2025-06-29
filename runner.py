@@ -91,6 +91,7 @@ class PHPAnalyzer:
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
             # Format: [(file, line)]
+            # focus_lines = [("question/type/ddwtos/questiontype.php", 93)]
             focus_lines = []
 
             # Run the Joern analysis
@@ -131,6 +132,7 @@ class PHPAnalyzer:
             # - Produces file:
             #       JOEGRAPH
             if do_create_graph:
+                tmp_graph_path = Path("/tmp", self.project_path.name)
                 run_report_time(
                     [
                         "joern-parse",
@@ -138,9 +140,20 @@ class PHPAnalyzer:
                         "--language",
                         "php",
                         "--output",
-                        joe_out_graph,
+                        tmp_graph_path,
                     ],
                     "Joern-Parse (graph creation)",
+                )
+
+                run_report_time(
+                    [
+                        "joern",
+                        "--script",
+                        Path("tools", "enhance.sc"),
+                        "--param",
+                        f"cpgFile={tmp_graph_path}",
+                    ],
+                    "Joern (graph analysis)",
                 )
 
             # Joern-Script[Analyze] phase
@@ -162,7 +175,7 @@ class PHPAnalyzer:
                     "--script",
                     Path("tools", "analyze.sc"),
                     "--param",
-                    f"cpgFile={joe_out_graph}",
+                    f"projectPath={self.project_path}",
                     "--param",
                     f"outFile={analysis_results_path}",
                 ]
@@ -189,7 +202,7 @@ class PHPAnalyzer:
                     "--script",
                     Path("tools", "resolve_includes.sc"),
                     "--param",
-                    f"cpgFile={joe_out_graph}",
+                    f"projectPath={self.project_path}",
                     "--param",
                     f"outFile={avail_res_path}",
                     "--param",
