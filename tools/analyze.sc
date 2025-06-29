@@ -349,20 +349,21 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
   if (assigned_var.isCall) {
     val call = assigned_var.asInstanceOf[CallNode]
 
-    if (call.methodFullName == "list") {
-      // Assigned to a list of variables, analyze all
-      // https://www.php.net/manual/en/function.list.php
-      for (arg <- call.argument) {
-        val array_index = arg.argumentIndex - 1
+    // if (call.methodFullName == "list") {
+    //   // Assigned to a list of variables, analyze all
+    //   // https://www.php.net/manual/en/function.list.php
+    //   for (arg <- call.argument) {
+    //     val array_index = arg.argumentIndex - 1
 
-        conds += createCondition("ArrayRef",
-            mutable.Map("arrayIdx" -> array_index.toString))
+    //     conds += createCondition("ArrayRef",
+    //         mutable.Map("arrayIdx" -> array_index.toString))
 
-        // TODO: should we really follow each element?
-        followAssignedVar(conds, arg, analyzed, depth, warnings, methodCache, memberCache)
-      }
-      return false
-    } else if (call.methodFullName == "<operator>.doubleArrow") {
+    //     // TODO: should we really follow each element?
+    //     followAssignedVar(conds, arg, analyzed, depth, warnings, methodCache, memberCache)
+    //   }
+    //   return false
+    // } else
+    if (call.methodFullName == "<operator>.doubleArrow") {
       // Get $value from $key => $value
       return followAssignedVar(conds, call.argument.argumentIndex(2).head, analyzed, depth, warnings, methodCache, memberCache)
     } else if (call.methodFullName == "<operator>.fieldAccess") {
@@ -820,7 +821,29 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           /* Unserialized value is assigned to a variable, follow it to collect
            * more conditions */
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
-          if (assigned_var.id != n.id) {
+          if (assigned_var.isIdentifier && assigned_var.asInstanceOf[Identifier].name.contains("@tmp-")) {
+              println("Got it")
+              val temp_identifier = assigned_var.asInstanceOf[Identifier]
+              val varName = temp_identifier.name
+              val scopeId = getScopeId(temp_identifier)
+
+              // Find all usages of this temporary variable directly, without relying on a Local declaration.
+              val all_temp_uses = cpg.identifier
+                  .name(varName)
+                  .filter(i => getScopeId(i) == scopeId)
+                  .l
+
+              // Filter out the current node (the assignment target) and only process subsequent uses.
+              val subsequent_uses = all_temp_uses
+                  .filter(_.id != temp_identifier.id)
+                  .filter(n => {n.lineNumber.getOrElse(-1) >= temp_identifier.lineNumber.getOrElse(-1)})
+
+              for (use <- subsequent_uses) {
+                  // By extracting conditions from the USES of the temp var, we will find the
+                  // subsequent assignments (e.g., `$a = @tmp-0[0]`) and trace the real variables.
+                  extractConditions(conds, use, analyzed, depth, warnings, methodCache, memberCache)
+              }
+          } else if (assigned_var.id != n.id) {
             followAssignedVar(conds, assigned_var, analyzed, depth, warnings, methodCache, memberCache)
           } else {
             // Don't follow re-assignments
