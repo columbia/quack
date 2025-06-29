@@ -58,7 +58,7 @@ def test_class_storage_test(datafiles, tmp_path):
         {
             "filename": "class_storage_test.php",
             "lineNumber": 33,
-            "allowedTypes": ["string", "Template", "InterestingClass", ""],
+            "allowedTypes": ["string", "Template", "InterestingClass"],
             "allowedClasses": ["InterestingClass"],
         },
         {

@@ -15,7 +15,7 @@ def test_conditions_field_get(datafiles, tmp_path):
 
     expected_result = [
         {'filename': 'conditions_field_get.php', 'lineNumber': 15,
-            'allowedTypes': ['', 'SomeClass'], 'allowedClasses': ['SomeClass']}
+            'allowedTypes': ['SomeClass'], 'allowedClasses': ['SomeClass']}
     ]
 
     assert compare_results(expected_result, results, fragment_path)
@@ -46,7 +46,7 @@ def test_conditions_test(datafiles, tmp_path):
     results = do_analysis(fragment_path, tmp_path)
 
     expected_result = [{'filename': 'conditions_test.php', 'lineNumber': 8,
-                        'allowedTypes': ['string', ''], 'allowedClasses': []}]
+                        'allowedTypes': ['string'], 'allowedClasses': []}]
 
     assert compare_results(expected_result, results, fragment_path)
 
@@ -78,17 +78,17 @@ def test_conditionals(datafiles, tmp_path):
     results = do_analysis(fragment_path, tmp_path)
 
     expected_result = [{'filename': 'conditionals_test.php', 'lineNumber': 6,
-                        'allowedTypes': ['string', ''], 'allowedClasses': []},
+                        'allowedTypes': ['string'], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 10,
-                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                           'allowedTypes': ['string'], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 14,
                            'allowedTypes': [], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 20,
                            'allowedTypes': [], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 24,
-                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                           'allowedTypes': ['string'], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 28,
-                           'allowedTypes': ['string', ''], 'allowedClasses': []},
+                           'allowedTypes': ['string'], 'allowedClasses': []},
                        {'filename': 'conditionals_test.php', 'lineNumber': 32,
                            'allowedTypes': [], 'allowedClasses': []}
                        ]

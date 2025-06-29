@@ -18,7 +18,7 @@ def test_simple_project(datafiles, tmp_path):
         {
             "filename": SIMPLE_PRINT_NAME,
             "lineNumber": 4,
-            "allowedTypes": ['string', ''],
+            "allowedTypes": ['string'],
             "allowedClasses": []
         }
     ]
@@ -40,13 +40,13 @@ def test_multi_project(datafiles, tmp_path):
         {
             "filename": "simple-print-one.php",
             "lineNumber": 4,
-            "allowedTypes": ['string', ''],
+            "allowedTypes": ['string'],
             "allowedClasses": []
         },
         {
             "filename": "simple-print-two.php",
             "lineNumber": 4,
-            "allowedTypes": ['string', ''],
+            "allowedTypes": ['string'],
             "allowedClasses": []
         }
     ]

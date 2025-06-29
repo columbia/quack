@@ -183,11 +183,15 @@ def getScopeId(n: AstNode) : Long = {
 }
 
 // Add the classes that have a __toString method to the evidence
-def addHaveToString(conds: mutable.Set[Map[String, String]], methodCache: Map[String, List[Method]]) = {
+def addHaveToString(
+  conds: mutable.Set[Map[String, String]],
+  methodCache: Map[String, List[Method]],
+  nodeId: Long) = {
     val have_to_string = methodCache.getOrElse("__toString", List.empty).flatMap(_.typeDecl.name).mkString("|")
     conds += createCondition("Duck",
       mutable.Map("reason" -> "HasToString",
-        "type" -> have_to_string))
+        "type" -> have_to_string,
+        "nodeId" -> nodeId.toString))
 }
 
 // Follow all uses for the given parameter in the method/function
@@ -394,21 +398,28 @@ def followAssignedVar(conds: mutable.Set[Map[String, String]], assigned_var: Ast
 
         // Try to check if we know what the type of this property is before tainting it
         val field_members_with_name = memberCache.getOrElse(field_ident.canonicalName, List.empty)
-        if (fobj_type != "ANY" && !(fobj_type contains "|")) {
+        println("Fobj type " + fobj_type)
+        if (fobj_type != "ANY" && !(fobj_type.contains("|"))) {
           // Use 'fullName' here to match namespaces as well
           val classes_with_field = field_members_with_name.flatMap(_.typeDecl).filter(_.fullName == fobj_type)
           if (classes_with_field.length == 1)  {
             val the_class = classes_with_field.head
+            println("The class" + the_class)
             val member = the_class.member.name(field_ident.canonicalName).head
             val member_type = getNodeType(member)
+            println("Member type " + member_type)
             if (helpsWithTyping(member_type)) {
 
               conds += createCondition("Duck",
-                mutable.Map("reason" -> "AssignedToField",
-                  "type" -> member_type, "field" -> member.name))
+                mutable.Map(
+                  "reason" -> "AssignedToField",
+                  "type" -> member_type,
+                  "field" -> member.name,
+                  "nodeId" -> assigned_var.astParent.id.toString
+                  ))
 
               if (member_type.contains("string")) {
-                addHaveToString(conds, methodCache)
+                addHaveToString(conds, methodCache, call.astParent.id)
               }
               // No need to follow it since we deduced the type
               return false
@@ -602,8 +613,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               val classes_with_field = field_members.map(_.typeDecl.name).mkString("|")
 
               conds += createCondition("Duck",
-                mutable.Map("reason" -> "HasField",
-                  "type" -> classes_with_field, "field" -> field_name))
+                mutable.Map(
+                  "reason" -> "HasField",
+                  "type" -> classes_with_field,
+                  "field" -> field_name,
+                  "nodeId" -> call.astParent.id.toString
+                  ))
 
               conds += createCondition("FieldAccess",
                 mutable.Map(
@@ -617,8 +632,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             } else if (field_identifier.isExpression) {
               // Dynamic field access, so we can't say anything about the type
               conds += createCondition("Exact",
-                mutable.Map("reason" -> "DynamicCall",
-                  "type" -> "ANY", "call" -> call.name)
+                mutable.Map(
+                  "reason" -> "DynamicCall",
+                  "type" -> "ANY",
+                  "call" -> call.name,
+                  "nodeId" -> call.astParent.id.toString)
                 )
               return false // No need to collect anything else about this
             }
@@ -633,10 +651,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           conds += createCondition("Exact",
             mutable.Map(
               "type" -> casted_type,
-              "reason" -> "Cast"))
+              "reason" -> "Cast",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
               if (casted_type == "string") {
-                addHaveToString(conds, methodCache)
+                addHaveToString(conds, methodCache, call.astParent.id)
               }
 
           // No need to collect anything else about this since we got the exact
@@ -685,7 +705,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
 
           conds += createCondition("Exact",
-            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+            mutable.Map(
+              "reason" -> "Arithmetic",
+              "type" -> "numeric",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
         }
         // Bitwise operation
@@ -697,7 +721,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
 
           conds += createCondition("Exact",
-            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+            mutable.Map(
+              "reason" -> "Arithmetic",
+              "type" -> "numeric",
+              "nodId" -> call.astParent.id.toString
+              ))
         }
         // Arithmetic assignment (e.g. +=, -=)
         case arithmetic_assignment @ ("<operator>.assignmentPlus" |
@@ -709,7 +737,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
 
           conds += createCondition("Exact",
-            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+            mutable.Map(
+              "reason" -> "Arithmetic",
+              "type" -> "numeric",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
           // Being assigned with another variable
@@ -726,7 +758,11 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> parent.asInstanceOf[CallNode].name))
 
           conds += createCondition("Exact",
-            mutable.Map("reason" -> "Arithmetic", "type" -> "numeric"))
+            mutable.Map(
+              "reason" -> "Arithmetic",
+              "type" -> "numeric",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
           var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
           // Being assigned with another variable
@@ -773,10 +809,14 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             if (other_arg_type != "ANY" && other_arg_type != "deserialize.<returnValue>") {
 
               conds += createCondition("Exact",
-                mutable.Map("reason" -> "Ternary", "type" -> other_arg_type))
+                mutable.Map(
+                  "reason" -> "Ternary",
+                  "type" -> other_arg_type,
+                  "nodeId" -> call.astParent.id.toString
+                  ))
 
                 if (other_arg_type == "string") {
-                  addHaveToString(conds, methodCache)
+                  addHaveToString(conds, methodCache, call.astParent.id)
                 }
             }
           }
@@ -787,10 +827,14 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // Part of a string operation
         case string_op @ ("<operator>.concat" | "<operator>.assignmentConcat") => {
 
-          addHaveToString(conds, methodCache)
+          addHaveToString(conds, methodCache, call.astParent.id)
 
           conds += createCondition("Exact",
-            mutable.Map("type" -> "string", "reason" -> "StringOp"))
+            mutable.Map(
+              "type" -> "string",
+              "reason" -> "StringOp",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
           if (call.methodFullName == "<operator>.assignmentConcat") {
             var assigned_var = getAssignedVar(parent.asInstanceOf[CallNode])
@@ -807,10 +851,14 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
             mutable.Map("type" -> call.typeFullName))
 
           conds += createCondition("Exact",
-            mutable.Map("type" -> call.typeFullName, "reason" -> "Scalar"))
+            mutable.Map(
+              "type" -> call.typeFullName,
+              "reason" -> "Scalar",
+              "nodeId" -> call.astParent.id.toString
+              ))
 
           if (call.typeFullName == "string") {
-            addHaveToString(conds, methodCache)
+            addHaveToString(conds, methodCache, call.astParent.id)
           }
         }
         // Used in 'new' as a dynamic class name (new $var())
@@ -881,12 +929,15 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   val arg_type = getNodeType(callback_arg)
                   if (helpsWithTyping(arg_type)) {
 
-                    conds += createCondition("Exact", mutable.Map("reason" ->
-                      "FuncArg", "type" -> arg_type, "function" ->
-                      callback_func.name))
+                    conds += createCondition("Exact", mutable.Map(
+                      "reason" -> "FuncArg",
+                      "type" -> arg_type,
+                      "function" -> callback_func.name,
+                      "nodeId" -> call.astParent.id.toString
+                    ))
 
                     if (arg_type contains "string") {
-                      addHaveToString(conds, methodCache)
+                      addHaveToString(conds, methodCache, call.astParent.id)
                     }
                   }
                 }
@@ -896,8 +947,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
           } else {
             // We can't resolve what the callback is, we need to allow everything
             conds += createCondition("Exact",
-              mutable.Map("reason" -> "DynamicCall",
-                "type" -> "ANY", "call" -> call.name))
+              mutable.Map(
+                "reason" -> "DynamicCall",
+                "type" -> "ANY",
+                "call" -> call.name,
+                "nodeId" -> call.astParent.id.toString
+                ))
           }
 
         }
@@ -940,10 +995,15 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                 // Check if we know the parameter type before collecting evidence from within the function
                 if (helpsWithTyping(param_type)) {
                   conds += createCondition("Exact",
-                    mutable.Map("reason" -> "FuncArg", "type" -> param_type, "function" -> fcall.name))
+                    mutable.Map(
+                      "reason" -> "FuncArg",
+                      "type" -> param_type,
+                      "function" -> fcall.name,
+                      "nodeId" -> call.astParent.id.toString
+                      ))
 
                   if (param_type.contains("string")) {
-                    addHaveToString(conds, methodCache)
+                    addHaveToString(conds, methodCache, call.astParent.id)
                   }
 
                 } else if (!isBuiltIn(method)) {
@@ -965,8 +1025,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
               val types = methods.flatMap(_.typeDecl.name).mkString("|")
 
               conds += createCondition("Duck",
-                mutable.Map("reason" -> "HasMethod",
-                  "type" -> types, "method" -> fcall.name))
+                mutable.Map(
+                  "reason" -> "HasMethod",
+                  "type" -> types,
+                  "method" -> fcall.name,
+                  "nodeId" -> fcall.astParent.id.toString
+                  ))
 
             } else {
               // Try to identify the object first and filter, else just try everything
@@ -982,7 +1046,10 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   // we have to allow all classes
                   conds += createCondition("Exact",
                     mutable.Map("reason" -> "DynamicCall",
-                      "type" -> "ANY", "call" -> (fobj_type + "->__construct")))
+                      "type" -> "ANY",
+                      "call" -> (fobj_type + "->__construct"),
+                      "nodeId" -> fcall.astParent.id.toString
+                      ))
 
                   return false
                 }
@@ -1041,12 +1108,15 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
                   if (helpsWithTyping(param_type)) {
 
                     conds += createCondition("Exact",
-                      mutable.Map("reason" -> "MethodArg",
+                      mutable.Map(
+                        "reason" -> "MethodArg",
                         "type" -> param_type,
-                        "method" -> fcall.name))
+                        "method" -> fcall.name,
+                        "nodeId" -> fcall.astParent.id.toString
+                        ))
 
                     if (param_type.contains("string")) {
-                      addHaveToString(conds, methodCache)
+                      addHaveToString(conds, methodCache, call.astParent.id)
                     }
 
                   } else if (!isBuiltIn(method)) {
@@ -1077,7 +1147,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
       // Check if we know the return type before collecting evidence from the call sites
       if (helpsWithTyping(return_type)) {
         conds += createCondition("Exact",
-          mutable.Map("reason" -> "Return", "type" -> return_type, "methodName" -> method.name))
+          mutable.Map(
+            "reason" -> "Return",
+            "type" -> return_type,
+            "methodName" -> method.name,
+            "nodeId" -> method.astParent.id.toString
+            ))
       } else if (!isBuiltIn(method)) {
         // Recurse backwards to collect more evidence from the call sites of
         // the parent method
