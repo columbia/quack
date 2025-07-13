@@ -108,7 +108,7 @@ def getDefId(use: AstNode): String = {
 
   if (use.isIdentifier) {
     val declarationNodeTraversal = use.asInstanceOf[Identifier].out("REF")
-    val declarationNodeOption = declarationNodeTraversal.headOption
+    val declarationNodeOption = declarationNodeTraversal.lastOption
 
     if (declarationNodeOption.isDefined) {
         val defNode = declarationNodeOption.get
@@ -973,8 +973,12 @@ def extractConditions(conds: mutable.Set[Map[String, String]], n: AstNode,
         // Passed to instanceOf
         case "<operator>.instanceOf" => {
           val class_name = call.argument.argumentIndex(2).head.asInstanceOf[Identifier].name
-          conds += createCondition("InstanceOf",
-            mutable.Map("type" -> class_name))
+          conds += createCondition("Duck",
+            mutable.Map(
+              "reason" -> "InstanceOf",
+              "type" -> class_name,
+              "nodeId" -> getDefId(n)
+              ))
         }
         // The node is used as an argument to a call, record the condition
         case _ => {

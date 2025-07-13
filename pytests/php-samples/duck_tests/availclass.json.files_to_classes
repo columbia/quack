@@ -1,0 +1,4 @@
+/home/neo/quack/pytests/php-samples/duck_tests/pass_to_func.php -> ListBuffer(Duck, Whale)
+/home/neo/quack/pytests/php-samples/duck_tests/method.php -> ListBuffer(Duck, Whale)
+/home/neo/quack/pytests/php-samples/duck_tests/field.php -> ListBuffer(Duck, Whale)
+/home/neo/quack/pytests/php-samples/duck_tests/instanceof.php -> ListBuffer(Duck, Whale)

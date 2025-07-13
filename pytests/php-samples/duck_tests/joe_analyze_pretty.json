@@ -1,0 +1,113 @@
+[
+  {
+    "filename": "/home/neo/quack/pytests/php-samples/duck_tests/field.php",
+    "lineNumber": 11,
+    "conditions": [
+      {
+        "reason": "Scalar",
+        "condType": "Exact",
+        "type": "string",
+        "nodeId": "30064771076"
+      },
+      {
+        "condType": "Scalar",
+        "type": "string"
+      },
+      {
+        "condType": "ArgToFuncIdx",
+        "argIdx": "0",
+        "callerFullName": "echo",
+        "callerName": "echo"
+      },
+      {
+        "condType": "FieldAccess",
+        "fieldName": "feather_color"
+      },
+      {
+        "reason": "HasToString",
+        "condType": "Duck",
+        "type": "",
+        "nodeId": "25769803778"
+      },
+      {
+        "condType": "Duck",
+        "field": "feather_color",
+        "reason": "HasField",
+        "type": "Duck",
+        "nodeId": "94489280512"
+      },
+      {
+        "condType": "Exact",
+        "reason": "FuncArg",
+        "function": "echo",
+        "type": "string",
+        "nodeId": "30064771075"
+      },
+      {
+        "reason": "HasToString",
+        "condType": "Duck",
+        "type": "",
+        "nodeId": "30064771074"
+      }
+    ]
+  },
+  {
+    "filename": "/home/neo/quack/pytests/php-samples/duck_tests/instanceof.php",
+    "lineNumber": 8,
+    "conditions": [
+      {
+        "condType": "InstanceOf",
+        "type": "Duck"
+      }
+    ]
+  },
+  {
+    "filename": "/home/neo/quack/pytests/php-samples/duck_tests/method.php",
+    "lineNumber": 20,
+    "conditions": [
+      {
+        "methodName": "swim",
+        "condType": "CallsMethod",
+        "methodFullName": "mixed.swim"
+      },
+      {
+        "condType": "Duck",
+        "method": "swim",
+        "reason": "HasMethod",
+        "type": "Duck|Whale",
+        "nodeId": "94489280517"
+      },
+      {
+        "methodName": "fly",
+        "condType": "CallsMethod",
+        "methodFullName": "mixed.fly"
+      },
+      {
+        "condType": "Duck",
+        "method": "fly",
+        "reason": "HasMethod",
+        "type": "Duck",
+        "nodeId": "94489280517"
+      }
+    ]
+  },
+  {
+    "filename": "/home/neo/quack/pytests/php-samples/duck_tests/pass_to_func.php",
+    "lineNumber": 9,
+    "conditions": [
+      {
+        "condType": "ArgToFuncIdx",
+        "argIdx": "0",
+        "callerFullName": "somefunc",
+        "callerName": "somefunc"
+      },
+      {
+        "condType": "Exact",
+        "reason": "FuncArg",
+        "function": "somefunc",
+        "type": "Duck",
+        "nodeId": "94489280518"
+      }
+    ]
+  }
+]
