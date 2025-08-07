@@ -10,7 +10,7 @@
 //  [ ] - Optimize when paths are fully resolved
 
 import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
-import io.shiftleft.semanticcpg.language.Traversal
+import io.shiftleft.semanticcpg.language._
 import scala.collection.mutable
 import scala.sys.process._
 import java.nio.file.{Path, Paths, Files}
@@ -43,6 +43,20 @@ trait Logger {
     }
   }
 }
+
+def writeFile(path: String, content: String): Unit = {
+  try {
+    val parentDir = Paths.get(path).getParent
+    if (parentDir != null) Files.createDirectories(parentDir)
+    Files.writeString(Paths.get(path), content)
+    logger.info(s"Successfully wrote ${content.length} bytes to $path")
+  } catch {
+    case e: Exception =>
+      logger.error(s"[!] ERROR: Failed to write to file $path.")
+      logger.error(s"    Reason: ${e.getMessage}")
+  }
+}
+
 
 var project_root : String = ""
 var psr4_script : java.nio.file.Path = Paths.get("")
@@ -92,7 +106,7 @@ def try_resolve_const(n: CallNode) : String =  {
     return UNKNOWN_NODE
   } else if (definitions.length == 1) {
     logger.info("Found definition for constant " + n.code)
-    val const_val = get_include_string(definitions.l(0).argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
+    val const_val = get_include_string(definitions.head.argument.argumentIndex(2).head.asInstanceOf[AstNode])
     return const_val
   } else {
     logger.warning("Multiple definitions found for " + n.code)
@@ -104,6 +118,7 @@ def try_resolve_const(n: CallNode) : String =  {
 def join_paths(p1: String, p2: String) : String = {
     return Paths.get(p1, p2).normalize().toString()
 }
+
 
 // Check if the provided includes for a file contain a file with an unhandled autoloader
 def includes_unhandled_autoloader(includes: mutable.ListBuffer[String]) : Boolean = {
@@ -119,7 +134,7 @@ def includes_unhandled_autoloader(includes: mutable.ListBuffer[String]) : Boolea
 // Resolve a magic const
 def resolve_magic_const(n: CallNode) : String = {
   logger.debug("Resolving magic const " + n.code)
-  val filename = n.file.name.l(0)
+  val filename = n.file.name.head
   n.code match  {
     case "__DIR__" => {
       val file_path = join_paths(project_root, filename)
@@ -161,9 +176,10 @@ def get_include_string(n: AstNode) : String = {
     val call = n.asInstanceOf[CallNode]
     call.methodFullName match {
       case "<operator>.concat" => {
-        val arg1 = get_include_string(call.argument.argumentIndex(1).l(0).asInstanceOf[AstNode])
-        val arg2 = get_include_string(call.argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
-        return Paths.get(arg1, arg2).normalize().toString()
+        val arg1 = get_include_string(call.argument.argumentIndex(1).head.asInstanceOf[AstNode])
+        val arg2 = get_include_string(call.argument.argumentIndex(2).head.asInstanceOf[AstNode])
+        // return Paths.get(arg1, arg2).normalize().toString()
+        return arg1 + arg2
       }
       case "<operator>.fieldAccess" => {
         if (is_magic_const(call)) {
@@ -180,15 +196,34 @@ def get_include_string(n: AstNode) : String = {
         if (is_builtin(call)) {
           return resolve_builtin(call)
         } else {
-          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.l(0) + ":" + call.lineNumber.getOrElse(-1))
+          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.head + ":" + call.lineNumber.getOrElse(-1))
           return UNKNOWN_NODE
         }
       }
     }
   } else if (n.isIdentifier) {
-    // XXX: Maybe try to resolve its value first if it's in the same scope
-    logger.debug("Unknown node: " + n)
-    return UNKNOWN_NODE
+      // XXX: Maybe try to resolve its value first if it's in the same scope
+      logger.debug("Unknown node: " + n)
+      logger.debug("trying to resolve value by finding where it is defined")
+      val identifier = n.asInstanceOf[Identifier]
+      /* The argument is a variable identifier. In this case, we find where the
+       * variable is assigned by searching the containing method for 
+       * assignment statements where the lhs matches the variable name.
+       */
+      val assignments_rhs = identifier
+        .method
+        .call.where(_.name("<operator>.assignment"))
+        .where(_.argument.argumentIndex(1).isIdentifier.name(identifier.name))
+        .argument.argumentIndex(2)
+        .l
+
+      assignments_rhs.length match {
+        case 0 => return UNKNOWN_NODE
+        case 1 => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+        /* This case ignores if there are multiple assignments to the variable in this function.
+         * TODO: try to take the assignment immediately prior to the variable use. */
+        case _ => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+      }
   } else {
     throw new Exception("Unknown type for include argument: " + n)
   }
@@ -326,7 +361,7 @@ def resolve_avail_classes(
           focus_entries.contains(x.method.filename + ":" + x.lineNumber.getOrElse(-1).toString))
     }
     // Group calls by filename. Materialize here as groupBy needs a collection.
-    val unser_calls_grouped = unser_calls_traversal.l.groupBy(_.file.name.l(0))
+    val unser_calls_grouped = unser_calls_traversal.l.groupBy(_.file.name.head)
 
     var avail_classes_entries = mutable.ListBuffer[AvailClassesEntry]()
 
@@ -366,9 +401,10 @@ def resolve_avail_classes(
     avail_classes_entries.toList
 }
 
-@main def exec(cpgFile: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
+@main def exec(projectPath: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
 
-  importCpg(cpgFile)
+  val projectName = Paths.get(projectPath).getFileName().toString()
+  open(projectName)
 
   val outFileWarnings = outFile + ".warnings"
   val outFileErrors = outFile + ".errors"
@@ -378,7 +414,8 @@ def resolve_avail_classes(
   project_root = cpg.metaData.l.head.root
   // Keep queries as Traversals to materialize as late as possible
   val include_directives_traversal = (cpg.call.methodFullName("include") ++ cpg.call.methodFullName("include_once") ++ cpg.call.methodFullName("require") ++ cpg.call.methodFullName("require_once"))
-  val all_classes_traversal = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>")
+  // val all_classes_traversal = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>")
+  val all_classes_traversal = cpg.typeDecl.filterNot(_.name == "<global>").filterNot(_.fullName.endsWith("<metaclass>"))
 
   val project_files = cpg.file.l.filter(_.name != "<unknown>").map(x => join_paths(project_root, x.name))
 
@@ -478,17 +515,18 @@ def resolve_avail_classes(
 
   logger.info("Finalizing")
 
-  files_to_classes_map.mkString("\n") #> (outFile + ".files_to_classes")
-  included_files_map.mkString("\n") #> (outFile + ".included_files")
+  writeFile(outFile + ".files_to_classes", files_to_classes_map.mkString("\n"))
+  writeFile(outFile + ".included_files", included_files_map.mkString("\n"))
 
   val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map, focus_lines)
   val avail_classes_json: String = write(avail_classes)
 
-  avail_classes_json #> outFile
+  writeFile(outFile, avail_classes_json)
   // println(avail_classes_json)
 
-  ("[" + warnings.mkString(",") + "]") #> outFileWarnings
-  ("[" + errors.mkString(",") + "]") #> outFileErrors
+  writeFile(outFileWarnings, "[" + warnings.mkString(",") + "]")
+  writeFile(outFileErrors, "[" + errors.mkString(",") + "]")
+
   // println(warnings)
   if (errors.nonEmpty) {
     println("Analysis finished with the following errors: ")
