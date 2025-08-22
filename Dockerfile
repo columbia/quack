@@ -15,7 +15,7 @@ RUN apt-get update \
 WORKDIR /joern
 RUN curl -L "https://github.com/joernio/joern/releases/latest/download/joern-install.sh" -o joern-install.sh \
     && chmod u+x joern-install.sh \
-    && ./joern-install.sh --version=v2.0.290
+    && ./joern-install.sh --version=v4.0.383
 
 # Copy Quack contents
 COPY . /quack/

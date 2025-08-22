@@ -2,9 +2,10 @@ import argparse
 import dataclasses
 import json
 import logging
-import sys, os
+import os
+import sys
 from pathlib import Path
-from subprocess import run, CompletedProcess
+from subprocess import CompletedProcess, run
 from time import time
 
 import colorama
@@ -14,11 +15,12 @@ from pyutils.common_functions import get_elapsed_str, make_sure_dir_exists
 
 logging.root.setLevel(logging.INFO)
 
+# TODO: Move debug.log to output directory
 fhandler = logging.FileHandler("debug.log")
 fhandler.setLevel(logging.DEBUG)
 fhandler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
+handler.setLevel(logging.DEBUG)
 handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 my_logger = logging.getLogger(__name__)
 my_logger.setLevel(logging.DEBUG)
@@ -49,7 +51,11 @@ class UnserCallLocation:
 
     def __eq__(self, other):
         return (
-                self.filename == other.filename and self.line == other.line and self.startFilePos == other.startFilePos and self.endFilePos == other.endFilePos)
+            self.filename == other.filename
+            and self.line == other.line
+            and self.startFilePos == other.startFilePos
+            and self.endFilePos == other.endFilePos
+        )
 
     def __hash__(self):
         return hash((self.filename, self.line, self.startFilePos, self.endFilePos))
@@ -67,12 +73,14 @@ class PHPAnalyzer:
     project_path: Path
     results_path: Path
 
-    def __post_init__(self):
-        self.process_project()
-
     # "Public" methods
-
-    def process_project(self):
+    def process_project(
+        self,
+        do_create_graph=True,
+        do_analyze=True,
+        do_resolve_avail_classes=True,
+        do_resolve_allowed_classes=True,
+    ):
         try:
             # Make sure the provided project exists
             if not self.project_path.exists():
@@ -82,14 +90,20 @@ class PHPAnalyzer:
             make_sure_dir_exists(self.results_path)
             reported_times = {}
             # For Debug: Put lines here to reduce analysis only to this line
+            # Format: [(file, line)]
+            # focus_lines = [("question/type/ddwtos/questiontype.php", 93)]
             focus_lines = []
 
             # Run the Joern analysis
-            my_logger.info("Running joern analysis")
+            # my_logger.info("Running joern analysis")
             # Path to save the JOERN CPG graph for the project
             joe_out_graph = self.results_path / "JOEGRAPH"
 
             def run_report_time(args, log_prefix, no_exit=False):
+                my_logger.info(f"{log_prefix} starting")
+                cmd_strs = [str(c) for c in args]
+                my_logger.debug(f"executing command: {' '.join(cmd_strs)}")
+
                 start_time = time()
                 joe_parse_cmd_ret: CompletedProcess = run(args, capture_output=True)
                 reported_times[log_prefix] = get_elapsed_str(start_time)
@@ -97,62 +111,148 @@ class PHPAnalyzer:
                 cmd_stdout = joe_parse_cmd_ret.stdout.decode("utf-8")
                 cmd_stderr = joe_parse_cmd_ret.stderr.decode("utf-8")
                 my_logger.debug(
-                    f"[{log_prefix}] CMD=[{args}]\n===:STDOUT:===\n{cmd_stdout}\n===:STDERR:===\n{cmd_stderr}")
+                    f"[{log_prefix}] CMD=[{args}]\n===:STDOUT:===\n{cmd_stdout}\n===:STDERR:===\n{cmd_stderr}"
+                )
                 if joe_parse_cmd_ret.returncode != 0:
-                    my_logger.error(f"{log_prefix} failed. Got retcode:{joe_parse_cmd_ret.returncode}. Stopping")
+                    my_logger.error(
+                        f"{log_prefix} failed. Got retcode:{joe_parse_cmd_ret.returncode}. Stopping"
+                    )
                     if not no_exit:
                         import pdb
+
                         pdb.set_trace()
                         exit(joe_parse_cmd_ret.returncode)
                 else:
                     my_logger.info(f"{log_prefix} finished successfully")
 
-            run_report_time(["joern-parse", self.project_path, "--language", "php", "--output", joe_out_graph],
-                            "Joern-Prase (graph creation)")
+            # Joern-Parse (graph creation) phase
+            #
+            # - Analyzes the target source code to create a Code Property Graph
+            #
+            # - Produces file:
+            #       JOEGRAPH
+            if do_create_graph:
+                tmp_graph_path = Path("/tmp", self.project_path.name)
+                run_report_time(
+                    [
+                        "joern-parse",
+                        self.project_path,
+                        "--language",
+                        "php",
+                        "--output",
+                        tmp_graph_path,
+                    ],
+                    "Joern-Parse (graph creation)",
+                )
+
+                run_report_time(
+                    [
+                        "joern",
+                        "--script",
+                        Path("tools", "enhance.sc"),
+                        "--param",
+                        f"cpgFile={tmp_graph_path}",
+                    ],
+                    "Joern (graph analysis)",
+                )
+
+            # Joern-Script[Analyze] phase
+            #
+            # - Analyzes unserialize calls in the target CPG to collect evidence
+            #   of their types, using static duck typing.
+            #
+            #   Either analyzes all unserialize calls, or restricts analysis to
+            #   only unserialize calls in "focus_lines"
+            #
+            # - Produces files:
+            #       joe_analyze.out
+            #       joe_analyze.out.warnings
 
             analysis_results_path = self.results_path.joinpath("joe_analyze.out")
-            joern_analyze_params = ["joern", "--script", Path("tools", "analyze.sc"), "--param",
-                                    f"cpgFile={joe_out_graph}", "--param", f"outFile={analysis_results_path}"]
-            if len(focus_lines) > 0:
-                focus_lines = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
-                my_logger.debug(f"Focus lines: {focus_lines}")
-                joern_analyze_params.extend(["--param", f"focus_lines={focus_lines}"])
-            run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
+            if do_analyze:
+                joern_analyze_params = [
+                    "joern",
+                    "--script",
+                    Path("tools", "analyze.sc"),
+                    "--param",
+                    f"projectPath={self.project_path}",
+                    "--param",
+                    f"outFile={analysis_results_path}",
+                ]
+                if len(focus_lines) > 0:
+                    focus_lines_str = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
+                    my_logger.debug(f"Focus lines: {focus_lines}")
+                    joern_analyze_params.extend(
+                        ["--param", f"focus_lines={focus_lines_str}"]
+                    )
+                run_report_time(joern_analyze_params, "Joern-Script[Analyze]", True)
+
+            # Joern-Script[AvailClasses] phase
+            #
+            # - TODO
+            #
+            # - Produces file:
+            #       availclass.json
 
             avail_res_path = self.results_path.joinpath("availclass.json")
-            psr4_path = Path("tools", "helpers", "get_psr4_mappings.php")
-            run_report_time(
-                ["joern", "--script", Path("tools", "resolve_includes.sc"), "--param", f"cpgFile={joe_out_graph}",
-                 "--param", f"outFile={avail_res_path}", "--param", f"psr4Script={psr4_path}"],
-                "Joern-Script[AvailClasses]")
+            if do_resolve_avail_classes:
+                psr4_path = Path("tools", "helpers", "get_psr4_mappings.php")
+                joern_available_classes_params = [
+                    "joern",
+                    "--script",
+                    Path("tools", "resolve_includes.sc"),
+                    "--param",
+                    f"projectPath={self.project_path}",
+                    "--param",
+                    f"outFile={avail_res_path}",
+                    "--param",
+                    f"psr4Script={psr4_path}",
+                ]
+                if len(focus_lines) > 0:
+                    focus_lines_str = ",".join([f"{x[0]}:{x[1]}" for x in focus_lines])
+                    my_logger.debug(f"Focus lines: {focus_lines}")
+                    joern_available_classes_params.extend(
+                        ["--param", f"focus_lines={focus_lines_str}"]
+                    )
+                run_report_time(
+                    joern_available_classes_params, "Joern-Script[AvailClasses]", True
+                )
 
             with self.results_path.joinpath("runtime_info.json").open("w") as f:
                 f.write(json.dumps(reported_times, indent=True))
 
-            # Read the results produced from each QUACK sub-component
-            with analysis_results_path.open() as f:
-                evidence_entries = json.load(f)
+            if (
+                do_resolve_allowed_classes
+                and analysis_results_path.is_file()
+                and avail_res_path.is_file()
+            ):
+                # Read the results produced from each QUACK sub-component
+                with analysis_results_path.open() as f:
+                    evidence_entries = json.load(f)
 
-            # TODO: remove this after the fix inside availclass script
-            with avail_res_path.open() as f:
-                avail_classes_entries = json.load(f)
-                for l in avail_classes_entries:
-                    for k, i in l.items():
-                        if k == "filename":
-                            my_p = Path(i)
-                            l[k] = my_p.relative_to(self.project_path).as_posix()
+                with avail_res_path.open() as f:
+                    avail_classes_entries = json.load(f)
 
-            with self.results_path.joinpath("availclass_fixed.json").open("w") as f:
-                f.write(json.dumps(avail_classes_entries, indent=True))
-            # END OF TODO
+                with self.results_path.joinpath("availclass_fixed.json").open("w") as f:
+                    f.write(json.dumps(avail_classes_entries, indent=True))
 
-            # Consolidate the available classes with the Psalm analysis results
-            result_entries = compute_allowed_classes(evidence_entries, avail_classes_entries)  # there should only be one project..
+                # END OF TODO
 
-            # Write final results to results JSON file
-            with self.results_path.joinpath("results.json").open("w") as f:
-                f.write(json.dumps(result_entries))
+                # Policy generation phase
+                #
+                # - Analyzes the evidence produced in the Analyze phase and the
+                #   available classes produced in the AvailClasses phase to
+                #   compute the allowed classes policies for each unserialize call.
+                # - Produces file:
+                #       TODO
+                # there should only be one project..
+                result_entries = compute_allowed_classes(
+                    evidence_entries, avail_classes_entries
+                )
 
+                # Write final results to results JSON file
+                with self.results_path.joinpath("results.json").open("w") as f:
+                    f.write(json.dumps(result_entries))
 
         except ValueError as e:
             my_logger.error(f"{e.__class__.__name__}:{e}")
@@ -160,9 +260,40 @@ class PHPAnalyzer:
 
 def main():
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("project_path", help="Path to project to analyze", type=Path)
-    arg_parser.add_argument("--output-path", type=Path, default=None,
-                            help="Path for keeping Quack's outputs (defaults to project path)")
+    arg_parser.add_argument(
+        "project_path", help="Path to project to analyze", type=Path
+    )
+    arg_parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Path for keeping Quack's outputs (defaults to project path)",
+    )
+    arg_parser.add_argument(
+        "--no-create-graph",
+        dest="do_create_graph",
+        action="store_false",
+        help="Do not create the Joern graph",
+    )
+    arg_parser.add_argument(
+        "--no-analyze",
+        dest="do_analyze",
+        action="store_false",
+        help="Do not analyze for class evidence",
+    )
+    arg_parser.add_argument(
+        "--no-resolve-avail-classes",
+        dest="do_resolve_avail_classes",
+        action="store_false",
+        help="Do not resolve the available classes",
+    )
+    arg_parser.add_argument(
+        "--no-resolve-allowed-classes",
+        dest="do_resolve_allowed_classes",
+        action="store_false",
+        help="Do not resolve the allowed classes",
+    )
+    # TODO: Add argument for specifying focus lines
     args = arg_parser.parse_args()
 
     # User requested to analyze a specific project
@@ -172,7 +303,13 @@ def main():
     project_path = args.project_path
     output_path = args.project_path if args.output_path is None else args.output_path
 
-    PHPAnalyzer(project_path, output_path)
+    analyzer = PHPAnalyzer(project_path, output_path)
+    analyzer.process_project(
+        do_create_graph=args.do_create_graph,
+        do_analyze=args.do_analyze,
+        do_resolve_avail_classes=args.do_resolve_avail_classes,
+        do_resolve_allowed_classes=args.do_resolve_allowed_classes,
+    )
 
 
 if __name__ == "__main__":

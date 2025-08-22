@@ -10,10 +10,12 @@
 //  [ ] - Optimize when paths are fully resolved
 
 import io.shiftleft.codepropertygraph.generated.nodes.{ Call => CallNode }
+import io.shiftleft.semanticcpg.language._
 import scala.collection.mutable
 import scala.sys.process._
 import java.nio.file.{Path, Paths, Files}
 import scala.Console.{RED, BLUE, YELLOW, WHITE, RESET}
+import scala.util.matching.Regex
 
 import upickle.default.*
 
@@ -42,76 +44,30 @@ trait Logger {
   }
 }
 
-class RegexPath(path: Path) {
-
-  private var _path: Path = path.normalize();
-
-  def this(path_str: String) = this(Paths.get(path_str))
-
-  def +(that: RegexPath) : RegexPath =
-    RegexPath(this._path.toString() + that._path.toString())
-
-  def +(that: String) : RegexPath =
-    RegexPath(this._path.toString() + that)
-
-  def isFullyResolved() : Boolean = {
-    return !(this._path.toString() contains UNKNOWN_NODE)
+def writeFile(path: String, content: String): Unit = {
+  try {
+    val parentDir = Paths.get(path).getParent
+    if (parentDir != null) Files.createDirectories(parentDir)
+    Files.writeString(Paths.get(path), content)
+    logger.info(s"Successfully wrote ${content.length} bytes to $path")
+  } catch {
+    case e: Exception =>
+      logger.error(s"[!] ERROR: Failed to write to file $path.")
+      logger.error(s"    Reason: ${e.getMessage}")
   }
-
-  def getParent() : RegexPath = {
-    return RegexPath(this._path.getParent)
-  }
-
-  def asPath() : Path = {
-    return this._path
-  }
-
-  // Either starts with the given string or the UNKNOWN_NODE
-  def startsWith(s: String) : Boolean = {
-    return this._path.toString().startsWith(s) || this._path.toString().startsWith(UNKNOWN_NODE)
-  }
-
-  def startsWith(s: RegexPath) : Boolean = {
-    return this._path.toString().startsWith(s.toString()) || this._path.toString().startsWith(UNKNOWN_NODE)
-  }
-
-  // Either ends with the given string or the UNKNOWN_NODE
-  def endsWith(s: String) : Boolean = {
-    return this._path.toString().endsWith(s) || this._path.toString().endsWith(UNKNOWN_NODE)
-  }
-
-  def endsWith(s: RegexPath) : Boolean = {
-    return this._path.toString().endsWith(s.toString()) || this._path.toString().endsWith(UNKNOWN_NODE)
-  }
-
-  override def equals(other: Any) : Boolean = {
-    // print("Checking equality between " + this + " and " + other)
-    other match {
-      case that: RegexPath => {
-        // Check both directions, since either can contain a regular expression
-        val equal = this._path.toString() == that._path.toString() ||
-                 this._path.toString().r.matches(that._path.toString()) ||
-                 that._path.toString().r.matches(this._path.toString())
-        return equal
-      }
-      case _ => false
-    }
-  }
-
-  override def hashCode() : Int = {
-    this._path.hashCode()
-  }
-
-  override def toString = this._path.toString()
-
 }
 
-var project_root : RegexPath = RegexPath("")
+
+var project_root : String = ""
 var psr4_script : java.nio.file.Path = Paths.get("")
 var warnings = mutable.ListBuffer[String]()
 var errors = mutable.ListBuffer[String]()
-var unhandled_autoloader_files = List[RegexPath]()
-var logger : Logger = new Logger{ logLevel = Info };
+var unhandled_autoloader_files = List[String]()
+var logger : Logger = new Logger{ logLevel = Debug };
+
+// Caches for performance
+val includedFilesCache = mutable.Map[String, List[String]]()
+val regexCache = mutable.Map[String, Regex]()
 
 val MAGIC_CONSTS : List[String] = List.apply("__DIR__", "__FILE__")
 val BUILTINS : List[String] = List.apply("dirname")
@@ -150,7 +106,7 @@ def try_resolve_const(n: CallNode) : String =  {
     return UNKNOWN_NODE
   } else if (definitions.length == 1) {
     logger.info("Found definition for constant " + n.code)
-    val const_val = get_include_string(definitions.l(0).argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
+    val const_val = get_include_string(definitions.head.argument.argumentIndex(2).head.asInstanceOf[AstNode])
     return const_val
   } else {
     logger.warning("Multiple definitions found for " + n.code)
@@ -159,29 +115,30 @@ def try_resolve_const(n: CallNode) : String =  {
 }
 
 // Returns the normalized absolute path by prepending the project root as a string
-def join_paths(p1: RegexPath, p2: RegexPath) : RegexPath = {
-    return RegexPath(p1.toString() + "/" + p2.toString())
+def join_paths(p1: String, p2: String) : String = {
+    return Paths.get(p1, p2).normalize().toString()
 }
 
+
 // Check if the provided includes for a file contain a file with an unhandled autoloader
-def includes_unhandled_autoloader(includes: mutable.ListBuffer[RegexPath]) : Boolean = {
-  for (autoload_file <- unhandled_autoloader_files) {
-    if (includes.filter(_ == autoload_file).l.length > 0) {
-      return true
+def includes_unhandled_autoloader(includes: mutable.ListBuffer[String]) : Boolean = {
+  // Check if any concrete autoloader file path is matched by any of the include patterns.
+  unhandled_autoloader_files.exists { autoload_file =>
+    includes.exists { pattern =>
+      val regex = regexCache.getOrElseUpdate(pattern, pattern.r)
+      regex.matches(autoload_file)
     }
   }
-  return false
 }
 
 // Resolve a magic const
 def resolve_magic_const(n: CallNode) : String = {
   logger.debug("Resolving magic const " + n.code)
-  val filename = RegexPath(n.file.name.l(0))
+  val filename = n.file.name.head
   n.code match  {
     case "__DIR__" => {
       val file_path = join_paths(project_root, filename)
-      val dir_path = file_path.getParent()
-      return dir_path.toString()
+      return Paths.get(file_path).getParent.toString
     }
     case "__FILE__" => {
       return join_paths(project_root, filename).toString()
@@ -196,7 +153,7 @@ def resolve_builtin(n: CallNode) : String = {
     case "dirname" => {
       val args = n.argument.l
       val path = get_include_string(args(0))
-      if (!(RegexPath(path).isFullyResolved())) {
+      if (path.contains(UNKNOWN_NODE)) {
         return UNKNOWN_NODE
       }
       val levels = if (args.length > 1) args(1).asInstanceOf[Int] else 1
@@ -219,9 +176,10 @@ def get_include_string(n: AstNode) : String = {
     val call = n.asInstanceOf[CallNode]
     call.methodFullName match {
       case "<operator>.concat" => {
-        val arg1 = get_include_string(call.argument.argumentIndex(1).l(0).asInstanceOf[AstNode])
-        val arg2 = get_include_string(call.argument.argumentIndex(2).l(0).asInstanceOf[AstNode])
-        return Paths.get(arg1 + arg2).normalize().toString()
+        val arg1 = get_include_string(call.argument.argumentIndex(1).head.asInstanceOf[AstNode])
+        val arg2 = get_include_string(call.argument.argumentIndex(2).head.asInstanceOf[AstNode])
+        // return Paths.get(arg1, arg2).normalize().toString()
+        return arg1 + arg2
       }
       case "<operator>.fieldAccess" => {
         if (is_magic_const(call)) {
@@ -238,15 +196,34 @@ def get_include_string(n: AstNode) : String = {
         if (is_builtin(call)) {
           return resolve_builtin(call)
         } else {
-          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.l(0) + ":" + call.lineNumber.getOrElse(-1))
+          logger.warning("Unknown call " + call.methodFullName + " at " + call.file.name.head + ":" + call.lineNumber.getOrElse(-1))
           return UNKNOWN_NODE
         }
       }
     }
   } else if (n.isIdentifier) {
-    // XXX: Maybe try to resolve its value first if it's in the same scope
-    logger.debug("Unknown node: " + n)
-    return UNKNOWN_NODE
+      // XXX: Maybe try to resolve its value first if it's in the same scope
+      logger.debug("Unknown node: " + n)
+      logger.debug("trying to resolve value by finding where it is defined")
+      val identifier = n.asInstanceOf[Identifier]
+      /* The argument is a variable identifier. In this case, we find where the
+       * variable is assigned by searching the containing method for 
+       * assignment statements where the lhs matches the variable name.
+       */
+      val assignments_rhs = identifier
+        .method
+        .call.where(_.name("<operator>.assignment"))
+        .where(_.argument.argumentIndex(1).isIdentifier.name(identifier.name))
+        .argument.argumentIndex(2)
+        .l
+
+      assignments_rhs.length match {
+        case 0 => return UNKNOWN_NODE
+        case 1 => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+        /* This case ignores if there are multiple assignments to the variable in this function.
+         * TODO: try to take the assignment immediately prior to the variable use. */
+        case _ => return get_include_string(assignments_rhs.head.asInstanceOf[AstNode])
+      }
   } else {
     throw new Exception("Unknown type for include argument: " + n)
   }
@@ -254,8 +231,8 @@ def get_include_string(n: AstNode) : String = {
 
 // Returns a string representing the path of included file. In cases where the
 // path can't fully be resolved, the part of the path that can't be resolved
-// is replaced with a wildcard (*)
-def get_include_path(including_file: RegexPath, n: AstNode) : RegexPath = {
+// is replaced with a wildcard (.*)
+def get_include_path(including_file: String, n: AstNode) : String = {
 
   logger.debug("Resolving include path for " + n)
 
@@ -265,24 +242,24 @@ def get_include_path(including_file: RegexPath, n: AstNode) : RegexPath = {
   // else make it absolute first
   if (incl_string.startsWith("/") || incl_string.startsWith(UNKNOWN_NODE)) {
     logger.debug("Resolved include string may be absolute: " + incl_string)
-    return RegexPath(incl_string)
+    return incl_string
   } else {
     logger.debug("Resolved include string is relative: " + incl_string)
-    val incl_dir = including_file.getParent()
-    return join_paths(incl_dir, RegexPath(incl_string))
+    val incl_dir = Paths.get(including_file).getParent().toString()
+    return join_paths(incl_dir, incl_string)
   }
 }
 
 // Gets the autloaded files for a Composer-generated, PSR-4 compliant
 // autoloader, as described in https://www.php-fig.org/psr/psr-4/
-def get_composer_autoloaded_files(composer_psr4_mappings_path: RegexPath,
-  files_to_classes: mutable.Map[RegexPath, mutable.ListBuffer[String]])
-  : mutable.ListBuffer[RegexPath] = {
-    var autoloaded_files = mutable.ListBuffer[RegexPath]()
+def get_composer_autoloaded_files(composer_psr4_mappings_path: String,
+  files_to_classes: mutable.Map[String, mutable.ListBuffer[String]])
+  : List[String] = {
+    var autoloaded_files = mutable.ListBuffer[String]()
 
     // If there is not autoloader, return an empty set of files
-    if (!Files.exists(composer_psr4_mappings_path.asPath())) {
-      return autoloaded_files
+    if (!Files.exists(Paths.get(composer_psr4_mappings_path))) {
+      return List()
     }
 
     // Load the namespace-to-path mappings
@@ -300,7 +277,7 @@ def get_composer_autoloaded_files(composer_psr4_mappings_path: RegexPath,
             if (class_fqn.startsWith(namespace)) {
               val remaining_namespace = class_fqn.substring(namespace.length)
               val remaining_path = remaining_namespace.replace("\\", "/") + ".php"
-              val class_file_path = RegexPath(path.str + "/" + remaining_path)
+              val class_file_path = Paths.get(path.str, remaining_path).normalize().toString()
               if (class_file_path == file) {
                 autoloaded_files += file
               }
@@ -310,209 +287,214 @@ def get_composer_autoloaded_files(composer_psr4_mappings_path: RegexPath,
       }
     }
 
-    return autoloaded_files
+    return autoloaded_files.distinct.toList
 }
 
 // Get files that filename includes
 // We need to provide a list of all the project files here in order to resolve
 // wildcards (includes.get would just return a string with a wildcard if we don't
 // compare it to an actual list of files to force it to use its 'equals' method)
-def get_included_files(filename: RegexPath,
-  includes: mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]],
-  project_files: List[RegexPath]) :
-  mutable.ListBuffer[RegexPath] = {
-    val included = mutable.ListBuffer[RegexPath]()
-    val to_match = includes.get(filename).getOrElse(mutable.ListBuffer[RegexPath]())
-    for (file <- to_match) {
-      included ++= project_files.filter(x => {x == file});
+def get_included_files(filename: String,
+  includes: mutable.Map[String, mutable.ListBuffer[String]],
+  project_files: List[String]) :
+  List[String] = {
+    if (includedFilesCache.contains(filename)) {
+      return includedFilesCache(filename)
     }
-    return included
+
+    val included = mutable.ListBuffer[String]()
+    val patterns_to_match = includes.getOrElse(filename, mutable.ListBuffer[String]())
+    for (pattern <- patterns_to_match) {
+      val patternRegex = pattern.r
+      included ++= project_files.filter(project_file =>
+        patternRegex.matches(project_file) || project_file.r.matches(pattern)
+      )
+    }
+
+    val result = included.distinct.toList
+    includedFilesCache.put(filename, result)
+    result
 }
 
-// Get files that include filename
-def get_files_that_include(filename: RegexPath,
-  includes: mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]]) :
-  List[RegexPath] = {
-    return includes.filter(_._2.contains(filename)).keys.l
+def get_files_that_include(filename: String,
+  includes: mutable.Map[String, mutable.ListBuffer[String]]) :
+  List[String] = {
+    includes.filter { case (_, patterns) =>
+      patterns.exists { p =>
+        p.r.matches(filename) || filename.r.matches(p)
+      }
+    }.keys.toList
 }
 
 // Add all the files including the target file to the list of files to add, and continue
 // recursively until we get all the files in the dependency chain
-def add_includes_backwards(filename: RegexPath,
-    includes: mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]],
-    files_to_add: mutable.ListBuffer[RegexPath]) : Boolean = {
+def add_includes_backwards(filename: String,
+    includes: mutable.Map[String, mutable.ListBuffer[String]],
+    files_to_add: mutable.Set[String]) : Boolean = { // Use Set for performance
 
-    var all_including_files = get_files_that_include(filename, includes)
+    val all_including_files = get_files_that_include(filename, includes)
 
     for (including <- all_including_files) {
-        // Don't re-add to avoid infinite loops
-        if (!files_to_add.contains(including)) {
-            files_to_add += including
+        // Don't re-add to avoid infinite loops. Set `add` returns false if item already exists.
+        if (files_to_add.add(including)) {
+            logger.info("Backwards add: " + including)
             add_includes_backwards(including, includes, files_to_add)
         }
     }
-
     true
 }
 
 // Creates the list of available classes at each deserialization call
 def resolve_avail_classes(
-  project_files: List[RegexPath],
-  included_files: mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]],
-  files_to_classes: mutable.Map[RegexPath, mutable.ListBuffer[String]],
+  project_files: List[String],
+  included_files: mutable.Map[String, mutable.ListBuffer[String]],
+  files_to_classes: mutable.Map[String, mutable.ListBuffer[String]],
+  focus_lines: String = ""
   ) : List[AvailClassesEntry] = {
 
-    logger.debug("Resolving available classes")
+    logger.info("Resolving available classes")
 
-    var unser_calls_all = cpg.call.name("unserialize") ++ cpg.call.name("maybe_unserialize") ++ cpg.call.name("deserialize") ++ cpg.call.name("dunserialize")
-    // Group calls by filename
-    // XXX: might have to change this to account for mid-file includes
-    var unser_calls_grouped = unser_calls_all.groupBy(_.file.name.l(0))
+    var unser_calls_traversal = cpg.call.name("unserialize") ++ cpg.call.name("maybe_unserialize") ++ cpg.call.name("deserialize") ++ cpg.call.name("dunserialize")
+    if (focus_lines != "") {
+      val focus_entries = focus_lines.split(",")
+      unser_calls_traversal = unser_calls_traversal.filter(x =>
+          focus_entries.contains(x.method.filename + ":" + x.lineNumber.getOrElse(-1).toString))
+    }
+    // Group calls by filename. Materialize here as groupBy needs a collection.
+    val unser_calls_grouped = unser_calls_traversal.l.groupBy(_.file.name.head)
 
     var avail_classes_entries = mutable.ListBuffer[AvailClassesEntry]()
 
     for ((filename, unser_calls) <- unser_calls_grouped) {
 
-      val full_filename = join_paths(project_root, RegexPath(filename))
-      // All the files that are on a dependency path passing from filename
-      var files_to_add = mutable.ListBuffer[RegexPath]()
-      files_to_add += full_filename
+      val full_filename = join_paths(project_root, filename)
+      // Use a Set for files_to_add for performance
+      val files_to_add = mutable.Set[String](full_filename)
 
-      logger.debug("Adding includes backwards for " + full_filename)
+      logger.info("Adding includes backwards for " + full_filename)
       add_includes_backwards(full_filename, included_files, files_to_add)
 
-      var avail_classes = mutable.ListBuffer[String]()
-      var checked_files = mutable.ListBuffer[RegexPath]()
+      var avail_classes = mutable.Set[String]() // Use Set to handle duplicates efficiently
+      var checked_files = mutable.Set[String]()
+      val queue = mutable.Queue[String](files_to_add.toSeq: _*)
 
-      while (!files_to_add.isEmpty) {
+      while (queue.nonEmpty) {
+        val incl_filename = queue.dequeue()
 
+        if (checked_files.add(incl_filename)) {
+            logger.info("Adding classes from " + incl_filename)
+            avail_classes ++= files_to_classes.getOrElse(incl_filename, mutable.ListBuffer.empty)
 
-        // Get all the files that match the included file name (might be more than
-        // one cause filename might contain wildwards)
-        val incl_filename = files_to_add.remove(0)
-
-        logger.debug("Adding classes from " + incl_filename)
-
-        val incl_classes = mutable.ListBuffer[String]()
-        for ((filename, classes) <- files_to_classes) {
-          if (filename == incl_filename) {
-            incl_classes ++= classes
-          }
-        }
-
-        avail_classes ++= incl_classes
-        checked_files += incl_filename
-
-        // Add all the files included by the current file to the list of files to add
-        for (included <- get_included_files(incl_filename, included_files, project_files)) {
-            if (!checked_files.contains(included) && !files_to_add.contains(included)) {
-                logger.debug("Adding " + included + " to files to check")
-                files_to_add += included
+            // Add all the files included by the current file to the list of files to add
+            for (included <- get_included_files(incl_filename, included_files, project_files)) {
+                if (!checked_files.contains(included) && !queue.contains(included)) {
+                    logger.info("Adding " + included + " to files to check")
+                    queue.enqueue(included)
+                }
             }
         }
       }
 
-      avail_classes_entries += AvailClassesEntry(full_filename.toString(), unser_calls.lineNumber.l, avail_classes.toList)
-
+      avail_classes_entries += AvailClassesEntry(full_filename, unser_calls.map(_.lineNumber.getOrElse(-1)), avail_classes.toList)
     }
 
-    return avail_classes_entries.toList
-
+    avail_classes_entries.toList
 }
 
-@main def exec(cpgFile: String, outFile: String, psr4Script: String) = {
+@main def exec(projectPath: String, outFile: String, psr4Script: String, focus_lines: String = "") = {
 
-  importCpg(cpgFile)
+  val projectName = Paths.get(projectPath).getFileName().toString()
+  open(projectName)
 
   val outFileWarnings = outFile + ".warnings"
   val outFileErrors = outFile + ".errors"
   psr4_script = Paths.get(psr4Script)
 
   // Root directory of analyzed project
-  project_root = RegexPath(cpg.metaData.l(0).root)
-  // All include directives in the project
-  val include_directives = (cpg.call.methodFullName("include") ++ cpg.call.methodFullName("include_once") ++ cpg.call.methodFullName("require") ++ cpg.call.methodFullName("require_once")).l
+  project_root = cpg.metaData.l.head.root
+  // Keep queries as Traversals to materialize as late as possible
+  val include_directives_traversal = (cpg.call.methodFullName("include") ++ cpg.call.methodFullName("include_once") ++ cpg.call.methodFullName("require") ++ cpg.call.methodFullName("require_once"))
+  // val all_classes_traversal = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>")
+  val all_classes_traversal = cpg.typeDecl.filterNot(_.name == "<global>").filterNot(_.fullName.endsWith("<metaclass>"))
 
-  val project_files = cpg.file.l.filter(_.name != "<unknown>").map(x => {join_paths(project_root, RegexPath(x.name))})
+  val project_files = cpg.file.l.filter(_.name != "<unknown>").map(x => join_paths(project_root, x.name))
 
   // Check if the project uses Composer. If it does, figure out its dependency
   // directory (usually just vendor/)
-  var vendor_dir = join_paths(project_root, RegexPath("vendor/"))
-  val composer_json_path = join_paths(project_root, RegexPath("composer.json"))
-  if (Files.exists(composer_json_path.asPath())) {
-    val composer_contents = os.read(os.Path(composer_json_path.toString()))
+  var vendor_dir = join_paths(project_root, "vendor/")
+  val composer_json_path = join_paths(project_root, "composer.json")
+  if (Files.exists(Paths.get(composer_json_path))) {
+    val composer_contents = os.read(os.Path(composer_json_path))
     val data = ujson.read(composer_contents)
     if (data.obj.get("config").nonEmpty) {
       val config = data("config")
       if (config.obj.get("vendor-dir").nonEmpty) {
-        vendor_dir = RegexPath(config("vendor-dir").str)
+        vendor_dir = config("vendor-dir").str
       }
     }
   }
 
-  val composer_vendor_dir = join_paths(vendor_dir, RegexPath("composer"))
-  val autoload_file_path = join_paths(vendor_dir, RegexPath("autoload.php"))
-  val composer_psr4_mappings_path = join_paths(composer_vendor_dir, RegexPath("autoload_psr4.php"))
+  val composer_vendor_dir = join_paths(vendor_dir, "composer")
+  val autoload_file_path = join_paths(vendor_dir, "autoload.php")
+  val composer_psr4_mappings_path = join_paths(composer_vendor_dir, "autoload_psr4.php")
 
   // Map from filename to its included files
-  var included_files_map = mutable.Map[RegexPath, mutable.ListBuffer[RegexPath]]()
+  val included_files_map = mutable.Map[String, mutable.ListBuffer[String]]()
 
   // Map from filename to the classes it defines
-  var files_to_classes_map = mutable.Map[RegexPath, mutable.ListBuffer[String]]()
-  // All classes declared in project
-  // FIXME: make sure this is the right way to filter the classes
-  val all_classes = cpg.typeDecl.filter(_.code.startsWith("class ")).filter(_.code != "class <global>").l
+  val files_to_classes_map = mutable.Map[String, mutable.ListBuffer[String]]()
+
+  // Materialize all_classes here as we need to group them by filename
+  val all_classes = all_classes_traversal.l
 
   // Check if there are any autoloaders registered other than the composer one
   val autoload_registrations = cpg.call.methodFullName("spl_autoload_register").l
-  val non_composer_autoloaders = autoload_registrations.filter(x => {!join_paths(project_root, RegexPath(x.method.filename)).startsWith(composer_vendor_dir)}).l
-  unhandled_autoloader_files = non_composer_autoloaders.map(x => {RegexPath(x.file.name.l(0))})
+  val non_composer_autoloaders = autoload_registrations.filter(x => !join_paths(project_root, x.method.filename).startsWith(composer_vendor_dir))
+  unhandled_autoloader_files = non_composer_autoloaders.map(x => join_paths(project_root, x.file.name.l.head))
 
-  if (non_composer_autoloaders.length > 0) {
+  if (non_composer_autoloaders.nonEmpty) {
     for (autoloader <- non_composer_autoloaders) {
-      logger.error("Unhandled autoloader registered at " + autoloader.file.name.l(0))
+      logger.error("Unhandled autoloader registered at " + autoloader.file.name.l.head)
     }
   }
 
   // Create the file to class map by matching each class definition with its containing filename
-  for (file <- cpg.file) {
+  for (file <- cpg.file.l) {
     val filename = file.name
-
     if (filename != "<unknown>") {
-      val full_path = join_paths(project_root, RegexPath(filename))
-      var contained_classes = all_classes.filter(_.filename == filename)
-      files_to_classes_map.getOrElseUpdate(full_path, mutable.ListBuffer[String]()) ++= contained_classes.fullName.l
+      val full_path = join_paths(project_root, filename)
+      val contained_classes = all_classes.filter(_.filename == filename)
+      if (contained_classes.nonEmpty) {
+          files_to_classes_map.getOrElseUpdate(full_path, mutable.ListBuffer[String]()) ++= contained_classes.map(_.fullName)
+      }
     }
-
   }
 
-  for (include_directive <- include_directives) {
-
-    // println("Include directive: " + include_directive)
-
-    val including_filename = join_paths(project_root, RegexPath(include_directive.file.name.l(0)))
-    // println("Including filename: " + including_filename)
+  // Iterate on the traversal directly
+  for (include_directive <- include_directives_traversal) {
+    val including_filename = join_paths(project_root, include_directive.file.name.l.head)
     val line = include_directive.lineNumber.getOrElse(-1)
 
     logger.info("Analyzing include directive at " + including_filename + ":" + line)
 
-    if (include_directive.argument.l.length > 1) {
+    if (include_directive.argument.size > 1) {
       throw new Exception("More than one arguments in include directive: " + including_filename + ":" + line)
     }
 
-    val included_arg = include_directive.argument.l(0)
+    val included_arg = include_directive.argument.head
     val included_path = get_include_path(including_filename, included_arg)
 
-    logger.debug("Resolved include path for " + including_filename + ":" + line + ": " + included_path)
+    logger.info("Resolved include path for " + including_filename + ":" + line + ": " + included_path)
 
     if (included_path.endsWith(".php")) {
-      included_files_map.getOrElseUpdate(including_filename, mutable.ListBuffer[RegexPath]()) += included_path
+      included_files_map.getOrElseUpdate(including_filename, mutable.ListBuffer[String]()) += included_path
     }
   }
 
+  logger.info("Moving on")
   // If the project has a Composer-generated autoloader, add the autoloaded
   // files in the results as well
-  if (Files.exists(autoload_file_path.asPath())) {
+  if (Files.exists(Paths.get(autoload_file_path))) {
     val composer_autoloaded_files = get_composer_autoloaded_files(composer_psr4_mappings_path, files_to_classes_map)
     // Check which files include the autoload.php file, and add the autoloaded classes
     // in their list of includes
@@ -526,24 +508,27 @@ def resolve_avail_classes(
       // Note: this has to be done last, to make sure we resolved all other includes first
       if (includes_unhandled_autoloader(includes)){
         logger.debug(filename.toString() + " includes unhandled autoloader")
-        included_files_map.update(filename, mutable.ListBuffer(files_to_classes_map.keys.l: _*))
+        included_files_map.update(filename, mutable.ListBuffer(files_to_classes_map.keys.toList: _*))
       }
     }
   }
 
-  files_to_classes_map.mkString("\n") #> (outFile + ".files_to_classes")
-  included_files_map.mkString("\n") #> (outFile + ".included_files")
+  logger.info("Finalizing")
 
-  val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map)
+  writeFile(outFile + ".files_to_classes", files_to_classes_map.mkString("\n"))
+  writeFile(outFile + ".included_files", included_files_map.mkString("\n"))
+
+  val avail_classes = resolve_avail_classes(project_files, included_files_map, files_to_classes_map, focus_lines)
   val avail_classes_json: String = write(avail_classes)
 
-  avail_classes_json #> outFile
-  println(avail_classes_json)
+  writeFile(outFile, avail_classes_json)
+  // println(avail_classes_json)
 
-  ("[" + warnings.mkString(",") + "]") #> outFileWarnings
-  ("[" + errors.mkString(",") + "]") #> outFileErrors
+  writeFile(outFileWarnings, "[" + warnings.mkString(",") + "]")
+  writeFile(outFileErrors, "[" + errors.mkString(",") + "]")
+
   // println(warnings)
-  if (errors.length > 0) {
+  if (errors.nonEmpty) {
     println("Analysis finished with the following errors: ")
     println(errors)
   } else {

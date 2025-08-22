@@ -1,0 +1,43 @@
+[
+  {
+    "filename": "/home/neo/quack/pytests/php-samples/nested_test/nested.php",
+    "lineNumber": 22,
+    "conditions": [
+      {
+        "condType": "Duck",
+        "field": "best_friend",
+        "reason": "HasField",
+        "type": "Human",
+        "nodeId": "94489280512"
+      },
+      {
+        "methodName": "bark",
+        "condType": "CallsMethod",
+        "methodFullName": "<unresolvedNamespace>.bark"
+      },
+      {
+        "condType": "Duck",
+        "method": "bark",
+        "reason": "HasMethod",
+        "type": "Dog",
+        "nodeId": "30064771079"
+      },
+      {
+        "condType": "Duck",
+        "method": "sing",
+        "reason": "HasMethod",
+        "type": "Human",
+        "nodeId": "94489280512"
+      },
+      {
+        "condType": "FieldAccess",
+        "fieldName": "best_friend"
+      },
+      {
+        "methodName": "sing",
+        "condType": "CallsMethod",
+        "methodFullName": "mixed.sing"
+      }
+    ]
+  }
+]

@@ -1,0 +1,6 @@
+{
+ "Joern-Parse (graph creation)": "00:00:04.14",
+ "Joern (graph analysis)": "00:00:07.14",
+ "Joern-Script[Analyze]": "00:00:11.03",
+ "Joern-Script[AvailClasses]": "00:00:10.05"
+}
